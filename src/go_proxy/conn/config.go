@@ -19,7 +19,6 @@ import (
 type ClientConfig struct {
 	Id                     uint16
 	Ipv6                   bool
-	Connection_log         bool
 	Domain_cache_time      int64
 	Connection_max_payload int
 	Mode                   string
@@ -114,13 +113,6 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 		cli_conf.Domain_cache_time = client.Domain_cache_time
 	}
 
-	info = append(info, fmt.Sprintf("%-25s : %v", "ipv6", cli_conf.Ipv6))
-	info = append(info, fmt.Sprintf("%-25s : %v", "con max payload", cli_conf.Connection_max_payload))
-	info = append(info, fmt.Sprintf("%-25s : %v", "domain cache time", cli_conf.Domain_cache_time))
-	info = append(info, fmt.Sprintf("%-25s : %v", "connection log", cli_conf.Connection_log))
-	info = append(info, fmt.Sprintf("%-25s : %v", "udp timeout", Config.Udp_timeout))
-	info = append(info, fmt.Sprintf("%-25s : %v", "udp in tcp ", cli_conf.Udp_in_tcp))
-
 	//check mode
 	client.Mode = strings.ToLower(client.Mode)
 	if client.Mode != Http && client.Mode != Socks5 && client.Mode != Iptables {
@@ -128,6 +120,17 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 	}
 	cli_conf.Mode = client.Mode
 	info = append(info, fmt.Sprintf("%-25s : %v", "mode ", cli_conf.Mode))
+
+	info = append(info, fmt.Sprintf("%-25s : %v", "ipv6", cli_conf.Ipv6))
+	info = append(info, fmt.Sprintf("%-25s : %v", "con max payload", cli_conf.Connection_max_payload))
+	info = append(info, fmt.Sprintf("%-25s : %v", "domain cache time", cli_conf.Domain_cache_time))
+	info = append(info, fmt.Sprintf("%-25s : %v", "udp timeout", Config.Udp_timeout))
+	if client.Mode!=Http{
+		info = append(info, fmt.Sprintf("%-25s : %v", "udp in tcp ", cli_conf.Udp_in_tcp))
+	}
+
+
+
 
 
 

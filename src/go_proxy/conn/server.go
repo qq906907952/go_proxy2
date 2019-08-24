@@ -186,6 +186,7 @@ func (this *RemoteServerConnection) handle_new_tcp_con(frame *ControlFrame, loca
 		connection_id = frame.ConnectionId
 		local_close   = false
 		send_close    = true
+		local_ctx context.Context
 	)
 
 	defer func() {
@@ -198,6 +199,10 @@ func (this *RemoteServerConnection) handle_new_tcp_con(frame *ControlFrame, loca
 			}:
 			case <-this.ctx.Done():
 			}
+		}
+
+		if local_ctx!=nil{
+			<-local_ctx.Done()
 		}
 	}()
 
@@ -293,12 +298,10 @@ func (this *RemoteServerConnection) handle_new_tcp_con(frame *ControlFrame, loca
 			return local_close, err
 		}
 	}
-	var (
-		ctx, cancel = context.WithCancel(context.TODO())
-	)
 
+	var cancel func()
+	local_ctx, cancel = context.WithCancel(context.TODO())
 	send_close = false
-
 	go func() {
 		defer func() {
 			cancel()
@@ -374,7 +377,7 @@ func (this *RemoteServerConnection) handle_new_tcp_con(frame *ControlFrame, loca
 				return local_close, errors.New("recv an unknow frame type")
 			}
 
-		case <-ctx.Done():
+		case <-local_ctx.Done():
 			return local_close, err
 		case <-this.ctx.Done():
 			return local_close, nil
@@ -415,6 +418,18 @@ func (this *RemoteServerConnection) handle_new_udp_connection(frame *ControlFram
 		}
 
 		g.Wait()
+		for{
+			i:=0
+			route.Range(func(_, value interface{}) bool {
+				i++
+				return true
+			})
+			if i==0{
+				break
+			}
+			time.Sleep(500*time.Millisecond)
+		}
+
 
 	}()
 

@@ -104,7 +104,7 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 			connection_map:       sync_map,
 			close_nofify:         local_close_notify,
 			ConnectionId:         connection_id,
-			Ctx:                  ctx,
+			Remote_ctx:                  ctx,
 			remote_connection_id: new_serv_con.Id,
 		}
 
@@ -222,7 +222,7 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 			local.RecvChan = local_recv
 			local.SendChan = this.recvChan
 			local.connection_map = this.sendChan
-			local.Ctx = this.ctx
+			local.Remote_ctx = this.ctx
 			local.remote_connection_id = this.Id
 
 			this.sendChan.Store(id, local_recv)

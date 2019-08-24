@@ -147,14 +147,18 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 
 			local.SendChan <- frame
 
-			ctx, cancel := context.WithCancel(context.TODO())
+			var cancel func()
+
+			local.Local_ctx, cancel = context.WithCancel(context.TODO())
 			t_ctx, _ := context.WithTimeout(context.TODO(), time.Duration(util.Config.Udp_timeout)*time.Second)
+			ctx, cancel2 := context.WithCancel(context.TODO())
+
+			defer cancel()
+
 			go func() {
 				var remote_close = false
-
 				defer func() {
-					cancel()
-
+					cancel2()
 					select {
 					case local.SendChan <- &conn.ControlFrame{
 						Version:      0,
@@ -162,7 +166,7 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 						Command:      conn.Command_close_conn,
 					}:
 
-					case <-local.Ctx.Done():
+					case <-local.Remote_ctx.Done():
 					}
 
 					local.Close(remote_close)
@@ -197,11 +201,10 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 
 						}
 
-					case <-local.Ctx.Done():
+					case <-local.Remote_ctx.Done():
 						return
-					case <-ctx.Done():
+					case <-local.Local_ctx.Done():
 						return
-
 					}
 				}
 			}()
@@ -209,20 +212,19 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 		loop:
 			for {
 				select {
-				case <-local.Ctx.Done():
-					break loop
 				case frame := <-data_chan:
 					t_ctx, _ = context.WithTimeout(context.TODO(), time.Duration(util.Config.Udp_timeout)*time.Second)
 					frame.ConnectionId = local.ConnectionId
 					select {
 					case local.SendChan <- frame:
-					case <-local.Ctx.Done():
+					case <-local.Remote_ctx.Done():
 						break loop
 					}
-				case <-ctx.Done():
+				case <-local.Remote_ctx.Done():
 					break loop
 				case <-t_ctx.Done():
-					cancel()
+					break loop
+				case <-ctx.Done():
 					break loop
 				}
 
@@ -438,12 +440,12 @@ func get_socks5_dest_addr(con io.Reader, config *conn.ClientConfig, atype byte) 
 	return
 }
 
-func concatnate_addr (lan_addr net.Addr,dest conn.Addr) string{
-	return lan_addr.String()+"|"+dest.StringWithPort()
+func concatnate_addr(lan_addr net.Addr, dest conn.Addr) string {
+	return lan_addr.String() + "|" + dest.StringWithPort()
 }
 
 func handle_cn_udp(config *conn.ClientConfig, route *sync.Map, local_addr net.Addr, dest_addr conn.Addr, data []byte, ul *net.UDPConn) {
-	key:=concatnate_addr(local_addr,dest_addr)
+	key := concatnate_addr(local_addr, dest_addr)
 	c, ok := route.Load(key)
 	if ok {
 		c.(net.Conn).Write(data)

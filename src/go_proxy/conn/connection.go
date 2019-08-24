@@ -97,7 +97,8 @@ type LocalConnection struct {
 	close_nofify         chan<- uint16
 	connection_map       *sync.Map
 	ConnectionId         uint16
-	Ctx                  context.Context
+	Remote_ctx           context.Context
+	Local_ctx            context.Context
 	remote_connection_id string
 }
 
@@ -105,11 +106,15 @@ func (this *LocalConnection) Close(remote_close bool) {
 	if this.Proto==Proto_tcp{
 		CloseTcp(this.Local.(*net.TCPConn))
 	}
+	if this.Local_ctx!=nil{
+		<-this.Local_ctx.Done()
+	}
 	if util.Verbose_info {
 		util.Print_verbose("%s  local connection %d waitting remote close",
 			this.remote_connection_id,
 			this.ConnectionId)
 	}
+
 	if !remote_close {
 	recv_close:
 		for {
@@ -121,7 +126,7 @@ func (this *LocalConnection) Close(remote_close bool) {
 					continue
 				}
 
-			case <-this.Ctx.Done():
+			case <-this.Remote_ctx.Done():
 				break recv_close
 			}
 

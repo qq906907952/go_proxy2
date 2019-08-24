@@ -154,7 +154,7 @@ func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.Con
 
 			}:
 
-			case <-local.Ctx.Done():
+			case <-local.Remote_ctx.Done():
 			}
 		}
 
@@ -205,18 +205,21 @@ func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.Con
 			}
 		case <-ctx.Done():
 			return errors.New("recv first frame timeout")
-		case <-local.Ctx.Done():
+		case <-local.Remote_ctx.Done():
 			return nil
 		}
 
 	}
 
+
 	var (
-		ctx, cancel = context.WithCancel(context.TODO())
+		cancel func()
 		err         error
 	)
 
+	local.Local_ctx,cancel=context.WithCancel(context.TODO())
 	send_close = false
+
 	go func() {
 		defer cancel()
 		for {
@@ -237,7 +240,7 @@ func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.Con
 				select {
 				case local.SendChan <- f:
 					return
-				case <-local.Ctx.Done():
+				case <-local.Remote_ctx.Done():
 					return
 				}
 
@@ -250,7 +253,7 @@ func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.Con
 				}:
 
 					break
-				case <-local.Ctx.Done():
+				case <-local.Remote_ctx.Done():
 					return
 				}
 			}
@@ -286,9 +289,9 @@ func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.Con
 				return errors.New("recv an unexpect frame")
 			}
 
-		case <-ctx.Done():
+		case <-local.Local_ctx.Done():
 			return err
-		case <-local.Ctx.Done():
+		case <-local.Remote_ctx.Done():
 			return nil
 		}
 
