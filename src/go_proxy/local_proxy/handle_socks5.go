@@ -153,8 +153,6 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 			t_ctx, _ := context.WithTimeout(context.TODO(), time.Duration(util.Config.Udp_timeout)*time.Second)
 			ctx, cancel2 := context.WithCancel(context.TODO())
 
-			defer cancel()
-
 			go func() {
 				var remote_close = false
 				defer func() {
@@ -229,6 +227,8 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 				}
 
 			}
+
+			cancel()
 
 		}
 	}()
@@ -344,8 +344,9 @@ func handle_socks5_udp_forward_udp(ul *net.UDPConn, config *conn.ClientConfig) {
 					}
 					not_cn_route.Store(local_addr.String(), con)
 					defer func() {
-						con.Close()
 						not_cn_route.Delete(local_addr.String())
+						con.Close()
+
 					}()
 					con.Write(config.Udp_crypt.Encrypt(frame.ToBytes()))
 
