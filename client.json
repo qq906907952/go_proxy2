@@ -1,0 +1,58 @@
+{
+
+  "Clients": [
+    {
+      "Mode": "http",
+      "Ipv6": false,
+      "Local_addr": "0.0.0.0:3939",
+      "Server_addr": "127.0.0.1:9999",
+      "Enc_method": "chacha20",
+      "Password": "12345678901234567890123456789012",
+      "Local_dns_addr": "114.114.114.114:53",
+      "Remote_dns_addr": "8.8.4.4:53",
+      "Connection_max_payload": 100,
+      "Domain_cache_time": 3600,
+      "Tls": {
+        "On": true,
+        "Server_name":"ydx.com",
+        "Tcp_encrypt": true,
+        "Root_cert_path": "cert/serv/root.crt",
+        "Client_cert": [
+          {
+            "Cert": "cert/client/client.crt",
+            "Private_key": "cert/client/client.key"
+          }
+
+        ]
+      }
+    },
+    {
+      "Mode": "socks5",
+      "Ipv6": false,
+      "Local_addr": "0.0.0.0:4949",
+      "Server_addr": "ydx.com:4343",
+      "Enc_method": "chacha20",
+      "Password": "12345678901234567890123456789012",
+      "Local_dns_addr": "114.114.114.114:53",
+      "Remote_dns_addr": "8.8.8.8:53",
+      "Connection_max_payload": 100,
+      "Domain_cache_time": 3600,
+      "Udp_in_tcp": false,
+      "Tls": {
+        "On": true,
+        "Server_name": "ydx.com",
+        "Tcp_encrypt": false,
+        "Root_cert_path": "cert/serv/root.crt",
+        "Client_cert": [
+          {
+            "Cert": "cert/client/client.crt",
+            "Private_key": "cert/client/client.key"
+          }
+        ]
+      }
+    }
+  ],
+
+  "Ulimit": 1024000,
+  "Udp_timeout": 30
+}

@@ -1,0 +1,26 @@
+[ req ]
+default_bits = 2048
+prompt = no
+req_extensions = req_ext
+distinguished_name = dn
+
+[ dn ]
+C = HK
+ST = HK
+L = HK
+O = miku_fan
+OU = miku_fan
+
+
+[ req_ext ]
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = ydx.com
+DNS.2=  cn1.vxtrans.link
+DNS.3=  cn2.vxtrans.link
+IP.1 = 47.244.137.231
+
+[ v3_ext ]
+extendedKeyUsage=serverAuth
+subjectAltName=@alt_names
