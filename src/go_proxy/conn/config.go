@@ -30,8 +30,7 @@ type ClientConfig struct {
 	Front_proxy_schema string
 	Front_proxy_addr   string
 
-	Remoted_dns      Addr
-
+	Remoted_dns Addr
 
 	Server_addr string
 
@@ -71,11 +70,11 @@ func parse_local_string_addr(s string, conf *ClientConfig) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if _type==Addr_type_ipv4{
+		if _type == Addr_type_ipv4 {
 			addr, err = NewAddrFromString(net.IP(ip).String()+":"+strings.Split(addr.StringWithPort(), ":")[1], false)
-		}else if _type==Addr_type_ipv6{
-			addr, err = NewAddrFromString(fmt.Sprintf("[%s]:%d",net.IP(ip).String(),addr.ToPortInt()), false)
-		}else{
+		} else if _type == Addr_type_ipv6 {
+			addr, err = NewAddrFromString(fmt.Sprintf("[%s]:%d", net.IP(ip).String(), addr.ToPortInt()), false)
+		} else {
 			panic("unknow error")
 		}
 
@@ -93,11 +92,9 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 
 	info := []string{}
 	cli_conf := &ClientConfig{
-		Id:             i,
-		Ipv6:           client.Ipv6,
-		Udp_in_tcp:client.Udp_in_tcp,
-
-
+		Id:         i,
+		Ipv6:       client.Ipv6,
+		Udp_in_tcp: client.Udp_in_tcp,
 	}
 	if client.Connection_max_payload > 65535 {
 		cli_conf.Connection_max_payload = 65500
@@ -109,6 +106,8 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 
 	if client.Domain_cache_time != 0 && client.Domain_cache_time < 60 {
 		cli_conf.Domain_cache_time = 60
+	} else if client.Domain_cache_time > 24*60*60 {
+		client.Domain_cache_time = 24 * 60 * 60
 	} else {
 		cli_conf.Domain_cache_time = client.Domain_cache_time
 	}
@@ -125,15 +124,9 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 	info = append(info, fmt.Sprintf("%-25s : %v", "con max payload", cli_conf.Connection_max_payload))
 	info = append(info, fmt.Sprintf("%-25s : %v", "domain cache time", cli_conf.Domain_cache_time))
 	info = append(info, fmt.Sprintf("%-25s : %v", "udp timeout", Config.Udp_timeout))
-	if client.Mode!=Http{
+	if client.Mode != Http {
 		info = append(info, fmt.Sprintf("%-25s : %v", "udp in tcp ", cli_conf.Udp_in_tcp))
 	}
-
-
-
-
-
-
 
 	//check local dns addr
 	if client.Local_dns_addr != "" {
@@ -159,7 +152,6 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 		info = append(info, fmt.Sprintf("%-25s : %v", "local dns addr ", "use default dns addr"))
 	}
 
-
 	// check local addr
 	if client.Local_addr == "" {
 		return nil, errors.New("local addr is nil")
@@ -170,10 +162,6 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 	}
 	cli_conf.Local_addr = addr
 	info = append(info, fmt.Sprintf("%-25s : %v", "local addr ", cli_conf.Local_addr))
-
-
-
-
 
 	// check front proxy
 
@@ -216,14 +204,12 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 			}
 		}
 
-		cli_conf.Remoted_dns=addr
+		cli_conf.Remoted_dns = addr
 		info = append(info, fmt.Sprintf("%-25s : %v", "remote dns addr ", addr.StringWithPort()))
 	} else {
-		cli_conf.Remoted_dns=nil
+		cli_conf.Remoted_dns = nil
 		info = append(info, fmt.Sprintf("%-25s : %v", "remote dns addr ", "use remote servrr default dns addr"))
 	}
-
-
 
 	//check crypt
 	crypt, err := Get_crypt(client.Enc_method, client.Password)
@@ -244,13 +230,13 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 
 		cert_pool.AppendCertsFromPEM(root_cert)
 		cli_conf.Tls_conf = &tls.Config{
-			RootCAs:    cert_pool,
-			ServerName: strings.Split(server_name,":")[0],
-			MinVersion:tls.VersionTLS13,
-			SessionTicketsDisabled:true,
+			RootCAs:                cert_pool,
+			ServerName:             strings.Split(server_name, ":")[0],
+			MinVersion:             tls.VersionTLS13,
+			SessionTicketsDisabled: true,
 		}
-		if client.Tls.Server_name!=""{
-			cli_conf.Tls_conf.ServerName= client.Tls.Server_name
+		if client.Tls.Server_name != "" {
+			cli_conf.Tls_conf.ServerName = client.Tls.Server_name
 		}
 		info = append(info, fmt.Sprintf("%-25s : %v", "tls server name ", cli_conf.Tls_conf.ServerName))
 
@@ -332,12 +318,11 @@ func LoadServerConfig(serve *Serve, i uint16) (*ServConfig, error) {
 		}
 
 		s.Tls_conf = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			ClientAuth:   tls.RequireAndVerifyClientCert,
-			ClientCAs:    cli_cert,
-			MinVersion:tls.VersionTLS13,
-			SessionTicketsDisabled:true,
-
+			Certificates:           []tls.Certificate{cert},
+			ClientAuth:             tls.RequireAndVerifyClientCert,
+			ClientCAs:              cli_cert,
+			MinVersion:             tls.VersionTLS13,
+			SessionTicketsDisabled: true,
 		}
 		if !serve.Tls.Tcp_encrypt {
 			s.Crypt = Get_none_crypt()
@@ -357,30 +342,24 @@ func LoadServerConfig(serve *Serve, i uint16) (*ServConfig, error) {
 	return s, nil
 }
 
-const (
-	check_ip_domain_expire_interval = 2*60
-	number_of_ip_domain_pre_check   = 200
-)
-
 func domain_cache_clean_scheduel(domian_map *sync.Map, domian_cache_time int64) {
-	for {
-		time.Sleep(check_ip_domain_expire_interval * time.Second)
-		i := 0
+	var clean = func() {
 		domian_map.Range(func(key, value interface{}) bool {
-			if i > number_of_ip_domain_pre_check {
-				return false
-			}
-
 			if time.Now().Unix()-value.(*Domain_record).Time >= domian_cache_time {
 				if Verbose_info {
 					Print_verbose("domain %s (ip:%s) cache clean", key, net.IP(value.(*Domain_record).Ip).String())
 				}
 				domian_map.Delete(key)
 			}
-			i += 1
-
 			return true
 		})
+	}
 
+	time.Sleep(time.Duration(float64(domian_cache_time)*1.5) * time.Second)
+	clean()
+
+	for {
+		time.Sleep(time.Duration(domian_cache_time/2) * time.Second)
+		clean()
 	}
 }

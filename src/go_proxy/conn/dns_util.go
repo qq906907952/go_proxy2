@@ -27,6 +27,7 @@ func Parse_local_domain(domain string, ipv6 bool,dns_addr string) ([]byte, int, 
 	ctx, _ := context.WithTimeout(context.TODO(), time.Duration(util.Config.Udp_timeout)*time.Second)
 	ip, err := (&net.Resolver{
 		Dial: dial,
+		PreferGo:true,
 	}).LookupIPAddr(ctx, domain)
 	if err != nil {
 		return nil, 0, err
