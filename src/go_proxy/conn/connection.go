@@ -18,11 +18,11 @@ const Tcp_buf_size = 65400
 const Udp_buf_size = 65450
 
 type ServerConnection struct {
-	Id               string
-	remote           net.Conn
-	id_chan          chan uint16
-	local_new_notify chan *LocalConnection
-
+	Id                   string
+	payload              uint16
+	remote               net.Conn
+	id_chan              chan uint16
+	local_new_notify     chan *LocalConnection
 	local_close_notify   chan uint16
 	recvChan             chan Frame
 	sendChan             *sync.Map
@@ -56,22 +56,31 @@ func (this *ServerConnection) close() {
 
 	}
 
-	i := len(this.id_chan)
+
 	ctx, _ := context.WithTimeout(context.TODO(), time.Duration(util.Resource_recycle_time_out)*time.Second)
 
-	if i == this.handler.config.Connection_max_payload {
+	if this.payload==0 {
 		goto close
 	}
 
 	for {
 		select {
-		case <-this.local_close_notify:
-			i += 1
+		case connection_id := <-this.local_close_notify:
+			this.payload -= 1
+			if util.Verbose_info {
+				util.Print_verbose("%s (closing) local connection %d remove ,payload:%d/%d",
+					this.Id,
+					connection_id,
+					this.payload,
+					this.handler.config.Connection_max_payload)
+			}
+
+
 		case <-ctx.Done():
 			panic(fmt.Sprintf("client %s id chan recycle timeout", this.Id))
 		}
 
-		if i == this.handler.config.Connection_max_payload {
+		if int(this.payload) == 0 {
 			goto close
 		}
 	}
@@ -103,10 +112,10 @@ type LocalConnection struct {
 }
 
 func (this *LocalConnection) Close(remote_close bool) {
-	if this.Proto==Proto_tcp{
+	if this.Proto == Proto_tcp {
 		CloseTcp(this.Local.(*net.TCPConn))
 	}
-	if this.Local_ctx!=nil{
+	if this.Local_ctx != nil {
 		<-this.Local_ctx.Done()
 	}
 	if util.Verbose_info {
@@ -152,13 +161,11 @@ type RemoteServerConnection struct {
 	handler            *ServerConnectionhandler
 }
 
-
-func (this *RemoteServerConnection) close_subconnection(connection_id uint16,local_close bool,local_recv_chan chan Frame){
+func (this *RemoteServerConnection) close_subconnection(connection_id uint16, local_close bool, local_recv_chan chan Frame) {
 	defer func() {
 		this.sendChan.Delete(connection_id)
 		close(local_recv_chan)
 	}()
-
 
 	if !local_close {
 	local_close:

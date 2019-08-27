@@ -26,13 +26,13 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 		new_local_connection := &LocalConnection{
 			Local: local,
 		}
-		switch local.(type){
+		switch local.(type) {
 		case *net.TCPConn:
-			new_local_connection.Proto=Proto_tcp
+			new_local_connection.Proto = Proto_tcp
 		case *net.UDPConn:
-			new_local_connection.Proto=Proto_udp
+			new_local_connection.Proto = Proto_udp
 		default:
-			return nil,errors.New("unknow connection type")
+			return nil, errors.New("unknow connection type")
 		}
 
 		serv_con.local_new_notify <- new_local_connection
@@ -87,6 +87,7 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 		new_serv_con := &ServerConnection{
 			remote:               serv_con,
 			id_chan:              id_chan,
+			payload:              1,
 			local_close_notify:   local_close_notify,
 			local_new_notify:     local_new_notify,
 			recvChan:             serv_recv_chan,
@@ -104,13 +105,13 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 			connection_map:       sync_map,
 			close_nofify:         local_close_notify,
 			ConnectionId:         connection_id,
-			Remote_ctx:                  ctx,
+			Remote_ctx:           ctx,
 			remote_connection_id: new_serv_con.Id,
 		}
 
 		go new_serv_con.client_loop(cancel)
 
-		if len(id_chan) == 0 {
+		if int(new_serv_con.payload)==this.config.Connection_max_payload {
 			new_serv_con.ele = this.full_queue.PushFront(new_serv_con)
 			go new_serv_con.dispatcher_in_full_queue()
 		} else {
@@ -121,12 +122,11 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 		if util.Verbose_info {
 			util.Print_verbose("%s new server connection ,payload:%d/%d,idle queue len:%d,full queue len:%d",
 				new_serv_con.Id,
-				new_serv_con.handler.config.Connection_max_payload-len(new_serv_con.id_chan),
+				new_serv_con.payload,
 				new_serv_con.handler.config.Connection_max_payload,
 				this.idle_queue.Len(),
 				this.full_queue.Len())
 		}
-
 
 		return new_local_connection, nil
 	}
@@ -187,7 +187,8 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 
 		case connection_id := <-this.local_close_notify:
 			this.id_chan <- connection_id
-			if len(this.id_chan) == this.handler.config.Connection_max_payload { // payload 0
+			this.payload-=1
+			if this.payload==0 {
 				ctx, _ = context.WithTimeout(ctx, time.Duration(this.idel_conn_remain_sec)*time.Second)
 
 				if util.Verbose_info {
@@ -195,7 +196,7 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 						this.Id,
 						"idle",
 						connection_id,
-						this.handler.config.Connection_max_payload-len(this.id_chan),
+						this.payload,
 						this.handler.config.Connection_max_payload,
 						this.idel_conn_remain_sec)
 
@@ -207,7 +208,7 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 						this.Id,
 						"idle",
 						connection_id,
-						this.handler.config.Connection_max_payload-len(this.id_chan),
+						this.payload,
 						this.handler.config.Connection_max_payload)
 				}
 			}
@@ -224,9 +225,9 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 			local.connection_map = this.sendChan
 			local.Remote_ctx = this.ctx
 			local.remote_connection_id = this.Id
-
 			this.sendChan.Store(id, local_recv)
-			if len(this.id_chan) == 0 { // full payload
+			this.payload+=1
+			if int(this.payload)==this.handler.config.Connection_max_payload { // full payload
 				this.handler.idle_queue.Remove(this.ele)
 				this.ele = this.handler.full_queue.PushFront(this)
 
@@ -235,7 +236,7 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 						this.Id,
 						"idle",
 						id,
-						this.handler.config.Connection_max_payload-len(this.id_chan),
+						this.payload,
 						this.handler.config.Connection_max_payload)
 				}
 				this.local_new_notify <- local
@@ -251,7 +252,7 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 				util.Print_verbose("%s local connection %d regist ,payload:%d/%d",
 					this.Id,
 					id,
-					this.handler.config.Connection_max_payload-len(this.id_chan),
+					this.payload,
 					this.handler.config.Connection_max_payload)
 			}
 
@@ -294,7 +295,8 @@ func (this *ServerConnection) dispatcher_in_full_queue() {
 
 		case connection_id := <-this.local_close_notify:
 			this.id_chan <- connection_id
-			if len(this.id_chan) == this.handler.config.Connection_max_payload {
+			this.payload-=1
+			if this.payload==0 {
 				remove_and_close()
 				return
 			}
@@ -307,7 +309,7 @@ func (this *ServerConnection) dispatcher_in_full_queue() {
 						this.Id,
 						"full",
 						connection_id,
-						this.handler.config.Connection_max_payload-len(this.id_chan),
+						this.payload,
 						this.handler.config.Connection_max_payload,
 						this.idel_conn_remain_sec/2)
 				}
@@ -318,7 +320,7 @@ func (this *ServerConnection) dispatcher_in_full_queue() {
 						this.Id,
 						"full",
 						connection_id,
-						this.handler.config.Connection_max_payload-len(this.id_chan),
+						this.payload,
 						this.handler.config.Connection_max_payload)
 				}
 			}
@@ -331,7 +333,7 @@ func (this *ServerConnection) dispatcher_in_full_queue() {
 				util.Print_verbose("%s (in %s queue) server connection  ,payload:%d/%d,dispatch to idle queue",
 					this.Id,
 					"full",
-					this.handler.config.Connection_max_payload-len(this.id_chan),
+					this.payload,
 					this.handler.config.Connection_max_payload)
 			}
 			go this.dispatcher_in_idle_queue()
@@ -376,20 +378,19 @@ func connection_to_server(conf *ClientConfig) (net.Conn, error) {
 		}
 		c = serv_con
 
-		h:=Handshake_info{
-			Rand_byte:      []byte{},
-			Max_payload:   uint16(conf.Connection_max_payload),
-			Dns_addr:conf.Remoted_dns,
-
+		h := Handshake_info{
+			Rand_byte:   []byte{},
+			Max_payload: uint16(conf.Connection_max_payload),
+			Dns_addr:    conf.Remoted_dns,
 		}
 
-		d:=conf.Crypt.Encrypt(h.ToBytes())
-		l:=make([]byte,2)
-		binary.BigEndian.PutUint16(l,uint16(len(d)))
-		c.SetWriteDeadline(time.Now().Add(time.Duration(util.Tcp_timeout)*time.Second))
+		d := conf.Crypt.Encrypt(h.ToBytes())
+		l := make([]byte, 2)
+		binary.BigEndian.PutUint16(l, uint16(len(d)))
+		c.SetWriteDeadline(time.Now().Add(time.Duration(util.Tcp_timeout) * time.Second))
 
-		if _,err:=c.Write(bytes.Join([][]byte{l,d},nil));err!=nil{
-			return nil,err
+		if _, err := c.Write(bytes.Join([][]byte{l, d}, nil)); err != nil {
+			return nil, err
 		}
 		c.SetWriteDeadline(time.Time{})
 
@@ -410,19 +411,17 @@ func connection_to_server(conf *ClientConfig) (net.Conn, error) {
 			return nil, err
 		}
 
-		h:=Handshake_info{
-			Rand_byte:      b,
-			Max_payload:   uint16(conf.Connection_max_payload),
-			Dns_addr:conf.Remoted_dns,
-
+		h := Handshake_info{
+			Rand_byte:   b,
+			Max_payload: uint16(conf.Connection_max_payload),
+			Dns_addr:    conf.Remoted_dns,
 		}
 
-		ed:=conf.Crypt.Encrypt(h.ToBytes())
-		l:=make([]byte,2)
-		binary.BigEndian.PutUint16(l,uint16(len(ed)))
+		ed := conf.Crypt.Encrypt(h.ToBytes())
+		l := make([]byte, 2)
+		binary.BigEndian.PutUint16(l, uint16(len(ed)))
 
-
-		if _, err := c.Write(bytes.Join([][]byte{l,ed},nil)); err != nil {
+		if _, err := c.Write(bytes.Join([][]byte{l, ed}, nil)); err != nil {
 			return nil, err
 		}
 
