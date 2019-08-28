@@ -421,9 +421,12 @@ func get_socks5_dest_addr(con io.Reader, config *conn.ClientConfig, atype byte) 
 
 		_d := string(domain)
 		d := net.ParseIP(_d)
-		if d.To16() != nil {
+
+		if d.To4() != nil {
+			addr, err = conn.NewAddrFromString(fmt.Sprintf("%s:%d", _d, binary.BigEndian.Uint16(port)), config.Ipv6)
+		} else if d.To16()!=nil{
 			addr, err = conn.NewAddrFromString(fmt.Sprintf("[%s]:%d", _d, binary.BigEndian.Uint16(port)), config.Ipv6)
-		} else {
+		}else{
 			addr, err = conn.NewAddrFromString(fmt.Sprintf("%s:%d", _d, binary.BigEndian.Uint16(port)), config.Ipv6)
 		}
 		i += 3 + int(domain_len[0])
