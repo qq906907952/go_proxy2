@@ -107,6 +107,11 @@ func convert_addr(addr conn.Addr, config *conn.ClientConfig) (conn.Addr, bool, e
 }
 
 func handle_cn_connection(con net.Conn, addr conn.Addr, cn_data, local_data []byte) error {
+
+	if util.Verbose_info{
+		util.Print_verbose("%s connection cn addr:%s",con.RemoteAddr().String(),addr.StringWithPort())
+	}
+
 	cn_con, err := net.Dial("tcp", addr.StringWithPort())
 	if err != nil {
 		return err
@@ -139,6 +144,11 @@ func handle_cn_connection(con net.Conn, addr conn.Addr, cn_data, local_data []by
 
 func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.ControlFrame, local_data []byte, config *conn.ClientConfig) error {
 
+	if util.Verbose_info{
+		util.Print_verbose("%s connection not cn addr:%s",local.Local.RemoteAddr().String(),first_frame.Addr.StringWithPort())
+	}
+
+
 	var (
 		remote_close = false
 		send_close   = true
@@ -169,7 +179,14 @@ func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.Con
 			return err
 		}
 	}
-	local.SendChan <- first_frame
+
+	select{
+	case local.SendChan <- first_frame:
+		break
+	case <-local.Remote_ctx.Done():
+		return nil
+	}
+
 	if first_frame.Addr.IsDomain() {
 		ctx, _ := context.WithTimeout(context.TODO(), time.Duration(util.Tcp_timeout)*time.Second)
 		select {

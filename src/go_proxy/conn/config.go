@@ -263,7 +263,11 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 	info = append(info, fmt.Sprintf("%-25s : %v", "udp enc method ", cli_conf.Udp_crypt.String()))
 	info = append(info, fmt.Sprintf("%-25s : %v", "tls ", client.Tls.On))
 
-	cli_conf.Idle_connection_remain_time = int(math.Sqrt(float64((cli_conf.Connection_max_payload))))
+	if cli_conf.Connection_max_payload<64{
+		cli_conf.Idle_connection_remain_time=8
+	}else{
+		cli_conf.Idle_connection_remain_time = int(64.0/math.Sqrt(float64(cli_conf.Connection_max_payload)))
+	}
 
 	info = append(info, fmt.Sprintf("%-25s : %v", "max connection payload", cli_conf.Connection_max_payload))
 	info = append(info, fmt.Sprintf("%-25s : %v", "idle conn reamin sec", cli_conf.Idle_connection_remain_time))

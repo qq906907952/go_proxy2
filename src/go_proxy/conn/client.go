@@ -61,7 +61,7 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 			id_chan                                = make(chan uint16, this.config.Connection_max_payload)
 			local_close_notify                     = make(chan uint16, this.config.Connection_max_payload)
 			local_new_notify                       = make(chan *LocalConnection)
-			serv_recv_chan, local_recv_chan        = make(chan Frame, this.config.Connection_max_payload*50), make(chan Frame, 500)
+			serv_recv_chan, local_recv_chan        = make(chan Frame), make(chan Frame, 500)
 			connection_id                   uint16 = 0
 			sync_map                               = &sync.Map{}
 			ctx, cancel                            = context.WithCancel(context.TODO())
@@ -107,6 +107,15 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 			ConnectionId:         connection_id,
 			Remote_ctx:           ctx,
 			remote_connection_id: new_serv_con.Id,
+		}
+
+		switch local.(type){
+		case *net.TCPConn:
+			new_local_connection.Proto=Proto_tcp
+		case *net.UDPConn:
+			new_local_connection.Proto=Proto_udp
+		default:
+			return nil, errors.New("unknow connection type")
 		}
 
 		go new_serv_con.client_loop(cancel)
@@ -301,7 +310,7 @@ func (this *ServerConnection) dispatcher_in_full_queue() {
 				return
 			}
 			if is_full {
-				ctx, _ = context.WithTimeout(ctx, time.Duration(this.idel_conn_remain_sec/2)*time.Second)
+				ctx, _ = context.WithTimeout(ctx, time.Duration(this.idel_conn_remain_sec)*time.Second)
 				is_full = false
 
 				if util.Verbose_info {
@@ -311,7 +320,7 @@ func (this *ServerConnection) dispatcher_in_full_queue() {
 						connection_id,
 						this.payload,
 						this.handler.config.Connection_max_payload,
-						this.idel_conn_remain_sec/2)
+						this.idel_conn_remain_sec)
 				}
 
 			} else {

@@ -28,7 +28,7 @@ func (this *ServerConnectionhandler) Dispatch_serv(serv_con net.Conn) {
 		remote:             serv_con,
 		connection_info:    h,
 		local_close_notify: make(chan uint16, h.Max_payload),
-		recvChan:           make(chan Frame, h.Max_payload*50),
+		recvChan:           make(chan Frame),
 		sendChan:           &sync.Map{},
 		ctx:                ctx,
 		lock:               &sync.RWMutex{},

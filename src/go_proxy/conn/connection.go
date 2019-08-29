@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const Tcp_buf_size = 65400
+const Tcp_buf_size = 2048
 const Udp_buf_size = 65450
 
 type ServerConnection struct {
