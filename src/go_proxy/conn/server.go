@@ -125,7 +125,7 @@ func (this *ServerConnectionhandler) Dispatch_serv(serv_con net.Conn) {
 						connection_id := frame.ConnectionId
 						local_close, err := remote.handle_new_tcp_con(frame, local_recv_chan)
 
-						if err != nil && err != io.EOF {
+						if err != nil && err != io.EOF && err!=io.ErrClosedPipe{
 							util.Print_log(this.config.Id, "connection close: %s", err.Error())
 						}
 						if util.Verbose_info {
@@ -140,7 +140,7 @@ func (this *ServerConnectionhandler) Dispatch_serv(serv_con net.Conn) {
 					go func(frame *ControlFrame, local_recv_chan chan Frame) {
 						connection_id := frame.ConnectionId
 						local_close, err := remote.handle_new_udp_connection(frame, local_recv_chan)
-						if err != nil && err != io.EOF {
+						if err != nil && err != io.EOF && err!=io.ErrClosedPipe {
 							util.Print_log(this.config.Id, "connection close: %s", err.Error())
 						}
 						if util.Verbose_info {

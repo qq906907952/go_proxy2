@@ -60,14 +60,14 @@ func StartLocalproxy(config *conn.ClientConfig,g *sync.WaitGroup) {
 			case util.Socks5:
 				go func(con *net.TCPConn, config *conn.ClientConfig) {
 
-					if err := handle_socks5(con, config); err != nil && err != io.EOF {
+					if err := handle_socks5(con, config); err != nil && err != io.EOF && err!=io.ErrUnexpectedEOF {
 						util.Print_log(config.Id, err.Error())
 					}
 				}(con, config)
 
 			case util.Http:
 				go func(con *net.TCPConn, config *conn.ClientConfig) {
-					if err := handle_http_con(con, config); err != nil && err != io.EOF {
+					if err := handle_http_con(con, config); err != nil && err != io.EOF && err!=io.ErrUnexpectedEOF{
 						util.Print_log(config.Id, err.Error())
 					}
 				}(con, config)

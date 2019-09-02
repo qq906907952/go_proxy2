@@ -144,6 +144,35 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 
 func (this *ServerConnection) client_loop(cancel func()) {
 
+
+
+	go func(){
+		for{
+			select{
+			case frame ,ok:= <-this.recvChan:
+				if ok{
+					if util.Verbose_info {
+						if frame.GetFrameType() == Control_frame && frame.(*ControlFrame).Command == Command_close_conn {
+							util.Print_verbose("%s (in %s queue) local connection %d send close",
+								this.Id,
+								"idle",
+								frame.GetConnectionId())
+						}
+					}
+					this.write_to_remote(frame)
+				}else{
+					return
+				}
+
+
+			case <-this.ctx.Done():
+				return
+
+			}
+		}
+	}()
+
+
 	var err error
 	defer func() {
 		cancel()
@@ -182,18 +211,6 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 
 	for {
 		select {
-		case frame := <-this.recvChan:
-			if util.Verbose_info {
-				if frame.GetFrameType() == Control_frame && frame.(*ControlFrame).Command == Command_close_conn {
-					util.Print_verbose("%s (in %s queue) local connection %d send close",
-						this.Id,
-						"idle",
-						frame.GetConnectionId())
-				}
-			}
-			this.write_to_remote(frame)
-
-
 		case connection_id := <-this.local_close_notify:
 			this.id_chan <- connection_id
 			this.payload-=1
@@ -277,7 +294,7 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 }
 
 func (this *ServerConnection) dispatcher_in_full_queue() {
-	var recv_chan <-chan Frame = this.recvChan
+
 	ctx := context.TODO()
 	is_full := true
 
@@ -291,17 +308,6 @@ func (this *ServerConnection) dispatcher_in_full_queue() {
 
 	for {
 		select {
-		case frame := <-recv_chan:
-			if util.Verbose_info {
-				if frame.GetFrameType() == Control_frame && frame.(*ControlFrame).Command == Command_close_conn {
-					util.Print_verbose("%s (in %s queue) local connection %d send close",
-						this.Id,
-						"idle",
-						frame.GetConnectionId())
-				}
-			}
-			this.write_to_remote(frame)
-
 		case connection_id := <-this.local_close_notify:
 			this.id_chan <- connection_id
 			this.payload-=1
