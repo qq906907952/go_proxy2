@@ -145,7 +145,7 @@ func handle_cn_connection(con net.Conn, addr conn.Addr, cn_data, local_data []by
 func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.ControlFrame, local_data []byte, config *conn.ClientConfig) error {
 
 	if util.Verbose_info{
-		util.Print_verbose("%s connection not cn addr:%s",local.Local.RemoteAddr().String(),first_frame.Addr.StringWithPort())
+		util.Print_verbose("%s connect not cn addr:%s",local.Local.RemoteAddr().String(),first_frame.Addr.StringWithPort())
 	}
 
 

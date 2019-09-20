@@ -256,17 +256,21 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 			continue
 		}
 		go func(local_addr *net.UDPAddr, dest conn.Addr, data []byte) {
-
 			addr, is_cn, err := convert_addr(addr, config)
 			if err != nil {
 				util.Print_log(config.Id, "parse socks5 udp dest addr fail: %s ", err.Error())
 				return
 			}
 			if is_cn {
+				if util.Verbose_info {
+					util.Print_verbose("connect cn udp addr:%s", addr.StringWithPort())
+				}
 				handle_cn_udp(config, route, local_addr, addr, data, ul)
 
 			} else {
-
+				if util.Verbose_info {
+					util.Print_verbose("connect not cn udp addr:%s", addr.StringWithPort())
+				}
 				_local_addr, err := conn.NewAddrFromString(local_addr.String(), config.Ipv6)
 				if err != nil {
 					util.Print_log(config.Id, "convert local addr fail: %s ", err.Error())
@@ -320,9 +324,15 @@ func handle_socks5_udp_forward_udp(ul *net.UDPConn, config *conn.ClientConfig) {
 				return
 			}
 			if is_cn {
+				if util.Verbose_info {
+					util.Print_verbose("connect cn udp addr:%s", addr.StringWithPort())
+				}
 				handle_cn_udp(config, cn_route, local_addr, addr, data, ul)
 
 			} else {
+				if util.Verbose_info {
+					util.Print_verbose("connect not cn udp addr:%s", addr.StringWithPort())
+				}
 				__local_addr, err := conn.NewAddrFromString(local_addr.String(), false)
 				if err != nil {
 					util.Print_log(config.Id, "convert local addr fail: %s ", err.Error())
@@ -424,9 +434,9 @@ func get_socks5_dest_addr(con io.Reader, config *conn.ClientConfig, atype byte) 
 
 		if d.To4() != nil {
 			addr, err = conn.NewAddrFromString(fmt.Sprintf("%s:%d", _d, binary.BigEndian.Uint16(port)), config.Ipv6)
-		} else if d.To16()!=nil{
+		} else if d.To16() != nil {
 			addr, err = conn.NewAddrFromString(fmt.Sprintf("[%s]:%d", _d, binary.BigEndian.Uint16(port)), config.Ipv6)
-		}else{
+		} else {
 			addr, err = conn.NewAddrFromString(fmt.Sprintf("%s:%d", _d, binary.BigEndian.Uint16(port)), config.Ipv6)
 		}
 		i += 3 + int(domain_len[0])
