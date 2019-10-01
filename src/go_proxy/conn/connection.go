@@ -56,10 +56,9 @@ func (this *ServerConnection) close() {
 
 	}
 
-
 	ctx, _ := context.WithTimeout(context.TODO(), time.Duration(util.Resource_recycle_time_out)*time.Second)
 
-	if this.payload==0 {
+	if this.payload == 0 {
 		goto close
 	}
 

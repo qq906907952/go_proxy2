@@ -61,6 +61,7 @@ type Client struct {
 	Ipv6                   bool
 	Connection_max_payload int
 	Local_addr             string
+	Local_Port             int
 	Server_addr            string
 	Enc_method             string
 	Password               string

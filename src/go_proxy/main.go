@@ -34,32 +34,33 @@ func main() {
 	}
 
 	g := &sync.WaitGroup{}
+	s:=[]string{}
 	for i, v := range util.Config.Clients {
 		g.Add(1)
-		fmt.Println("#########################################")
-		fmt.Printf("configing client %d \r\n", uint16(i))
-		conf, err := conn.LoadClientConfig(&v, uint16(i))
+		s=append(s,"#########################################")
+		s=append(s,fmt.Sprintf("configing client %d \r\n", uint16(i)))
+		conf, info,err := conn.LoadClientConfig(&v, uint16(i))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
 			os.Exit(1)
 		}
 		go local_proxy.StartLocalproxy(conf, g)
-		fmt.Println("#########################################")
+		s=append(s,append(info,"#########################################")...)
 
 	}
 
 	for i, v := range util.Config.Servers {
 		g.Add(2)
-		fmt.Println("#########################################")
-		fmt.Printf("configing server %d \r\n", uint16(i))
-		conf, err := conn.LoadServerConfig(&v, uint16(i))
+		s=append(s,"#########################################")
+		s=append(s,fmt.Sprintf("configing server %d \r\n", uint16(i)))
+		conf,info, err := conn.LoadServerConfig(&v, uint16(i))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
 			os.Exit(1)
 		}
 		go server.Start_tcp_server(conf, g)
 		go server.Start_udp_serv(conf, g)
-		fmt.Println("#########################################")
+		s=append(s,append(info,"#########################################")...)
 	}
 
 	g.Wait()
@@ -74,6 +75,9 @@ func main() {
 			fmt.Fprintf(os.Stderr, "write pid file fail: %s\r\n", err.Error())
 			os.Exit(1)
 		}
+	}
+	for _,v:=range s{
+		fmt.Println(v)
 	}
 	fmt.Println()
 	fmt.Println("run successful まいにちにミクミクしてあげるよ~~")

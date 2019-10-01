@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"go_proxy/util"
@@ -11,7 +12,6 @@ import (
 	"net"
 	"sync"
 	"time"
-	"encoding/binary"
 )
 
 func (this *ServerConnectionhandler) Dispatch_serv(serv_con net.Conn) {
@@ -125,7 +125,7 @@ func (this *ServerConnectionhandler) Dispatch_serv(serv_con net.Conn) {
 						connection_id := frame.ConnectionId
 						local_close, err := remote.handle_new_tcp_con(frame, local_recv_chan)
 
-						if err != nil && err != io.EOF && err!=io.ErrClosedPipe{
+						if err != nil && err != io.EOF && err != io.ErrClosedPipe {
 							util.Print_log(this.config.Id, "connection close: %s", err.Error())
 						}
 						if util.Verbose_info {
@@ -140,7 +140,7 @@ func (this *ServerConnectionhandler) Dispatch_serv(serv_con net.Conn) {
 					go func(frame *ControlFrame, local_recv_chan chan Frame) {
 						connection_id := frame.ConnectionId
 						local_close, err := remote.handle_new_udp_connection(frame, local_recv_chan)
-						if err != nil && err != io.EOF && err!=io.ErrClosedPipe {
+						if err != nil && err != io.EOF && err != io.ErrClosedPipe {
 							util.Print_log(this.config.Id, "connection close: %s", err.Error())
 						}
 						if util.Verbose_info {
@@ -186,7 +186,7 @@ func (this *RemoteServerConnection) handle_new_tcp_con(frame *ControlFrame, loca
 		connection_id = frame.ConnectionId
 		local_close   = false
 		send_close    = true
-		local_ctx context.Context
+		local_ctx     context.Context
 	)
 
 	defer func() {
@@ -201,7 +201,7 @@ func (this *RemoteServerConnection) handle_new_tcp_con(frame *ControlFrame, loca
 			}
 		}
 
-		if local_ctx!=nil{
+		if local_ctx != nil {
 			<-local_ctx.Done()
 		}
 	}()
@@ -390,7 +390,6 @@ func (this *RemoteServerConnection) handle_new_udp_connection(frame *ControlFram
 		connection_id = frame.ConnectionId
 		local_close   = false
 		route         = &sync.Map{}
-
 	)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -398,7 +397,7 @@ func (this *RemoteServerConnection) handle_new_udp_connection(frame *ControlFram
 	defer func() {
 		cancel()
 
-		g:=&sync.WaitGroup{}
+		g := &sync.WaitGroup{}
 		g.Add(1)
 		go func() {
 			route.Range(func(_, value interface{}) bool {
@@ -418,18 +417,17 @@ func (this *RemoteServerConnection) handle_new_udp_connection(frame *ControlFram
 		}
 
 		g.Wait()
-		for{
-			i:=0
+		for {
+			i := 0
 			route.Range(func(_, value interface{}) bool {
 				i++
 				return true
 			})
-			if i==0{
+			if i == 0 {
 				break
 			}
-			time.Sleep(500*time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 		}
-
 
 	}()
 
@@ -518,17 +516,22 @@ func (this *RemoteServerConnection) handle_new_udp_connection(frame *ControlFram
 						for {
 							con.SetReadDeadline(time.Now().Add(time.Duration(util.Config.Udp_timeout) * time.Second))
 							buf := make([]byte, Udp_buf_size)
-							i, err := con.Read(buf)
+							i, dest, err := con.ReadFrom(buf)
 							if err != nil {
 								return
 							}
 
+							dest_addr, err := NewAddrFromString(dest.String(), false)
+							if err != nil {
+								return
+							}
 							select {
 
 							case this.recvChan <- &UdpFrame{
 								Version:      0,
 								ConnectionId: connection_id,
 								Local_addr:   frame.Local_addr,
+								Dest_addr:    dest_addr,
 								Data:         buf[:i],
 							}:
 								continue

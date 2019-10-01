@@ -119,33 +119,37 @@ func handle_socks5_udp(con net.Conn, config *conn.ClientConfig, atype byte) erro
 
 func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 	var (
-		data_chan = make(chan *conn.UdpFrame, 10000)
+		data_chan = make(chan *conn.UdpFrame)
 		route     = &sync.Map{}
 	)
 
 	go func() {
-
 		for {
 			frame := <-data_chan
 			local, err := config.ConnectionHandler.Dispatch_client(ul)
 			if err != nil {
 				util.Print_log(config.Id, "connect to remote fail: %s", err.Error())
-				_data_chan := data_chan
-				data_chan = make(chan *conn.UdpFrame, 10000)
-				close(_data_chan)
 				continue
 			}
 
 			frame.ConnectionId = local.ConnectionId
 
-			local.SendChan <- &conn.ControlFrame{
+			select {
+			case local.SendChan <- &conn.ControlFrame{
 				Version:      0,
 				ConnectionId: local.ConnectionId,
 				Command:      conn.Command_new_conn,
 				Protocol:     conn.Proto_udp,
+			}:
+			case <-local.Remote_ctx.Done():
+				continue
 			}
 
-			local.SendChan <- frame
+			select{
+			case local.SendChan <- frame:
+			case <-local.Remote_ctx.Done():
+				continue
+			}
 
 			var cancel func()
 
@@ -276,12 +280,19 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 					util.Print_log(config.Id, "convert local addr fail: %s ", err.Error())
 					return
 				}
-				data_chan <- &conn.UdpFrame{
+
+				select {
+				case <-time.After(time.Duration(util.Config.Udp_timeout) * time.Second):
+					return
+				case data_chan <- &conn.UdpFrame{
 					Version:    0,
 					Local_addr: _local_addr,
 					Dest_addr:  addr,
 					Data:       data,
+				}:
+					return
 				}
+
 			}
 
 		}(from, addr, buf[_i+4:i])
@@ -289,11 +300,45 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 	}
 }
 
-func handle_socks5_udp_forward_udp(ul *net.UDPConn, config *conn.ClientConfig) {
+func handle_socks5_udp_forward_udp(ul ,remote *net.UDPConn, config *conn.ClientConfig) {
 	var (
 		cn_route     = &sync.Map{}
-		not_cn_route = &sync.Map{}
 	)
+
+	go func() {
+			for {
+				buf := make([]byte, conn.Udp_buf_size)
+				i, err := remote.Read(buf)
+				if err != nil {
+					continue
+				}
+				go func(data []byte) {
+					data, err := config.Udp_crypt.Decrypt(data)
+					if err != nil {
+						util.Print_log(config.Id, err.Error())
+						return
+					}
+					frame, err := conn.ParseBytesToFrame(data)
+
+					if err != nil {
+						util.Print_log(config.Id, "can not parse udp data to frame: %s", err.Error())
+						return
+					}
+					if frame.GetFrameType() != conn.Udp_Frame {
+						util.Print_log(config.Id, "udp recv an not udp frame")
+						return
+					}
+					udp_frame := frame.(*conn.UdpFrame)
+					ul.WriteToUDP(bytes.Join([][]byte{{0, 0, 0, 1, 0, 0, 0, 0, 0, 0}, udp_frame.Data}, nil),
+						&net.UDPAddr{
+							IP:   udp_frame.Local_addr.ToHostBytes(),
+							Port: udp_frame.Local_addr.ToPortInt(),
+						})
+				}(buf[:i])
+
+			}
+	}()
+
 	for {
 		buf := make([]byte, conn.Udp_buf_size)
 		i, from, err := ul.ReadFromUDP(buf)
@@ -339,60 +384,16 @@ func handle_socks5_udp_forward_udp(ul *net.UDPConn, config *conn.ClientConfig) {
 					return
 				}
 				frame := &conn.UdpFrame{
+					Version:    0,
 					Local_addr: __local_addr,
 					Dest_addr:  addr,
 					Data:       data,
 				}
-				con, ok := not_cn_route.Load(local_addr.String())
-				if ok {
-					con.(*net.UDPConn).Write(config.Udp_crypt.Encrypt(frame.ToBytes()))
-				} else {
-					con, err := net.Dial("udp", config.Server_addr)
-					if err != nil {
-						util.Print_log(config.Id, "dial remote udp fail: %s ", err.Error())
-						return
-					}
-					not_cn_route.Store(local_addr.String(), con)
-					defer func() {
-						not_cn_route.Delete(local_addr.String())
-						con.Close()
 
-					}()
-					con.Write(config.Udp_crypt.Encrypt(frame.ToBytes()))
-
-					for {
-						buf := make([]byte, conn.Udp_buf_size)
-						con.SetReadDeadline(time.Now().Add(time.Duration(util.Config.Udp_timeout) * time.Second))
-						i, err := con.Read(buf)
-						if err != nil {
-							return
-						}
-						data, err := config.Udp_crypt.Decrypt(buf[:i])
-						if err != nil {
-							util.Print_log(config.Id, err.Error())
-							return
-						}
-						frame, err := conn.ParseBytesToFrame(data)
-
-						if err != nil {
-							util.Print_log(config.Id, "can not parse udp data to frame: %s", err.Error())
-							return
-						}
-						if frame.GetFrameType() != conn.Udp_Frame {
-							util.Print_log(config.Id, "udp recv an not udp frame")
-							return
-						}
-						udp_frame := frame.(*conn.UdpFrame)
-						ul.WriteToUDP(bytes.Join([][]byte{{0, 0, 0, 1, 0, 0, 0, 0, 0, 0}, udp_frame.Data}, nil),
-							&net.UDPAddr{
-								IP:   udp_frame.Local_addr.ToHostBytes(),
-								Port: udp_frame.Local_addr.ToPortInt(),
-							})
-
-					}
-
-				}
-
+				remote.WriteToUDP(config.Udp_crypt.Encrypt(frame.ToBytes()),&net.UDPAddr{
+					IP:   config.Server_Addr.ToHostBytes(),
+					Port: config.Server_Addr.ToPortInt(),
+				})
 			}
 
 		}(from, addr, buf[_i+4:i])

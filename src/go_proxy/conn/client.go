@@ -143,9 +143,6 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 }
 
 func (this *ServerConnection) client_loop(cancel func()) {
-
-
-
 	go func(){
 		for{
 			select{

@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +28,7 @@ type ClientConfig struct {
 	Local_dns_addr string
 
 	Local_addr string
+	Local_port int
 
 	Front_proxy_schema string
 	Front_proxy_addr   string
@@ -33,6 +36,7 @@ type ClientConfig struct {
 	Remoted_dns Addr
 
 	Server_addr string
+	Server_Addr Addr
 
 	Crypt Crypt_interface
 
@@ -60,15 +64,15 @@ type ServConfig struct {
 	Id                    uint16
 }
 
-func parse_local_string_addr(s string, conf *ClientConfig) (string, error) {
+func parse_local_string_addr(s string, conf *ClientConfig) (Addr, error) {
 	addr, err := NewAddrFromString(s, conf.Ipv6)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if addr.IsDomain() {
 		ip, _type, err := Parse_local_domain(addr.String(), conf.Ipv6, conf.Local_dns_addr)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		if _type == Addr_type_ipv4 {
 			addr, err = NewAddrFromString(net.IP(ip).String()+":"+strings.Split(addr.StringWithPort(), ":")[1], false)
@@ -79,16 +83,16 @@ func parse_local_string_addr(s string, conf *ClientConfig) (string, error) {
 		}
 
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		return addr.StringWithPort(), nil
+		return addr, nil
 	} else {
-		return addr.StringWithPort(), nil
+		return addr, nil
 	}
 
 }
 
-func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
+func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error) {
 
 	info := []string{}
 	cli_conf := &ClientConfig{
@@ -104,7 +108,10 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 		cli_conf.Connection_max_payload = client.Connection_max_payload
 	}
 
-	if client.Domain_cache_time != 0 && client.Domain_cache_time < 60 {
+	if cli_conf.Mode == Iptables {
+		cli_conf.Ipv6 = false
+		cli_conf.Domain_cache_time = 0
+	} else if client.Domain_cache_time != 0 && client.Domain_cache_time < 60 {
 		cli_conf.Domain_cache_time = 60
 	} else if client.Domain_cache_time > 24*60*60 {
 		client.Domain_cache_time = 24 * 60 * 60
@@ -115,7 +122,11 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 	//check mode
 	client.Mode = strings.ToLower(client.Mode)
 	if client.Mode != Http && client.Mode != Socks5 && client.Mode != Iptables {
-		return nil, errors.New("client mode can only http|socks5|iptables")
+		return nil, nil, errors.New("client mode can only http|socks5|iptables")
+	}
+	if client.Mode == Iptables && runtime.GOOS != "linux" {
+		fmt.Fprintf(os.Stderr, "iptables mode only support on linux")
+		os.Exit(1)
 	}
 	cli_conf.Mode = client.Mode
 	info = append(info, fmt.Sprintf("%-25s : %v", "mode ", cli_conf.Mode))
@@ -129,39 +140,49 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 	}
 
 	//check local dns addr
-	if client.Local_dns_addr != "" {
-		addr, err := NewAddrFromString(client.Local_dns_addr, client.Ipv6)
-		if err != nil {
-			return nil, errors.New("check local dns addr fail : " + err.Error())
-		}
-		if addr.IsDomain() {
-			ip, err := net.ResolveIPAddr("ip", addr.String())
-			if err != nil || len(ip.IP) == 0 {
-				return nil, errors.New("look up local dns addr fail : " + err.Error())
-			}
-
-			addr, err = NewAddrFromString(ip.String()+":"+strings.Split(addr.StringWithPort(), ":")[1], client.Ipv6)
+	if cli_conf.Mode != Iptables {
+		if client.Local_dns_addr != "" {
+			addr, err := NewAddrFromString(client.Local_dns_addr, client.Ipv6)
 			if err != nil {
-				return nil, errors.New("parse local dns ip fail : " + err.Error())
+				return nil, nil, errors.New("check local dns addr fail : " + err.Error())
 			}
-		}
+			if addr.IsDomain() {
+				ip, err := net.ResolveIPAddr("ip", addr.String())
+				if err != nil || len(ip.IP) == 0 {
+					return nil, nil, errors.New("look up local dns addr fail : " + err.Error())
+				}
 
-		cli_conf.Local_dns_addr = addr.StringWithPort()
-		info = append(info, fmt.Sprintf("%-25s : %v", "local dns addr ", cli_conf.Local_dns_addr))
-	} else {
-		info = append(info, fmt.Sprintf("%-25s : %v", "local dns addr ", "use default dns addr"))
+				addr, err = NewAddrFromString(ip.String()+":"+strings.Split(addr.StringWithPort(), ":")[1], client.Ipv6)
+				if err != nil {
+					return nil, nil, errors.New("parse local dns ip fail : " + err.Error())
+				}
+			}
+
+			cli_conf.Local_dns_addr = addr.StringWithPort()
+			info = append(info, fmt.Sprintf("%-25s : %v", "local dns addr ", cli_conf.Local_dns_addr))
+		} else {
+			info = append(info, fmt.Sprintf("%-25s : %v", "local dns addr ", "use default dns addr"))
+		}
 	}
 
 	// check local addr
-	if client.Local_addr == "" {
-		return nil, errors.New("local addr is nil")
+
+	if cli_conf.Mode == Iptables {
+		if client.Local_Port > 65535 || client.Local_Port < 1 {
+			return nil, nil, errors.New("local port illegal")
+		}
+		cli_conf.Local_port = client.Local_Port
+	} else {
+		if client.Local_addr == "" {
+			return nil, nil, errors.New("local addr is nil")
+		}
+		addr, err := parse_local_string_addr(client.Local_addr, cli_conf)
+		if err != nil {
+			return nil, nil, errors.New("check local addr fail : " + err.Error())
+		}
+		cli_conf.Local_addr = addr.StringWithPort()
+		info = append(info, fmt.Sprintf("%-25s : %v", "local addr ", cli_conf.Local_addr))
 	}
-	addr, err := parse_local_string_addr(client.Local_addr, cli_conf)
-	if err != nil {
-		return nil, errors.New("check local addr fail : " + err.Error())
-	}
-	cli_conf.Local_addr = addr
-	info = append(info, fmt.Sprintf("%-25s : %v", "local addr ", cli_conf.Local_addr))
 
 	// check front proxy
 
@@ -179,28 +200,29 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 
 	//check server
 	server_name := strings.Trim(client.Server_addr, "")
-	addr, err = parse_local_string_addr(server_name, cli_conf)
+	addr, err := parse_local_string_addr(server_name, cli_conf)
 	if err != nil {
-		return nil, errors.New("check server addr faile : " + err.Error())
+		return nil, nil, errors.New("check server addr faile : " + err.Error())
 	}
-	cli_conf.Server_addr = addr
+	cli_conf.Server_Addr = addr
+	cli_conf.Server_addr = addr.StringWithPort()
 	info = append(info, fmt.Sprintf("%-25s : %v", "server addr ", cli_conf.Server_addr))
 
 	//check remote dns addr
 	if client.Remote_dns_addr != "" {
 		addr, err := NewAddrFromString(client.Remote_dns_addr, client.Ipv6)
 		if err != nil {
-			return nil, errors.New("check remote dns addr fail : " + err.Error())
+			return nil, nil, errors.New("check remote dns addr fail : " + err.Error())
 		}
 
 		if addr.IsDomain() {
 			ip, _type, err := Parse_local_domain(addr.String(), cli_conf.Ipv6, cli_conf.Local_dns_addr)
 			if err != nil {
-				return nil, errors.New("look up remote dns addr ip fail : " + err.Error())
+				return nil, nil, errors.New("look up remote dns addr ip fail : " + err.Error())
 			}
 			addr, err = NewAddrFromByte(ip, addr.ToPortByte(), _type)
 			if err != nil {
-				return nil, errors.New("parse remote dns addr fail : " + err.Error())
+				return nil, nil, errors.New("parse remote dns addr fail : " + err.Error())
 			}
 		}
 
@@ -214,7 +236,7 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 	//check crypt
 	crypt, err := Get_crypt(client.Enc_method, client.Password)
 	if err != nil {
-		return nil, errors.New("check crypt fail : " + err.Error())
+		return nil, nil, errors.New("check crypt fail : " + err.Error())
 	}
 
 	cli_conf.Crypt = crypt
@@ -225,7 +247,7 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 		cert_pool := x509.NewCertPool()
 		root_cert, err := ioutil.ReadFile(client.Tls.Root_cert_path)
 		if err != nil {
-			return nil, errors.New("server root cert check fail : " + err.Error())
+			return nil, nil, errors.New("server root cert check fail : " + err.Error())
 		}
 
 		cert_pool.AppendCertsFromPEM(root_cert)
@@ -241,14 +263,14 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 		info = append(info, fmt.Sprintf("%-25s : %v", "tls server name ", cli_conf.Tls_conf.ServerName))
 
 		if len(client.Tls.Client_cert) == 0 {
-			return nil, errors.New("tls check fail : client cert is nil")
+			return nil, nil, errors.New("tls check fail : client cert is nil")
 		}
 
 		client_cert := []tls.Certificate{}
 		for _, v := range client.Tls.Client_cert {
 			cert, err := tls.LoadX509KeyPair(v.Cert, v.Private_key)
 			if err != nil {
-				return nil, errors.New("load client cert fail : " + err.Error())
+				return nil, nil, errors.New("load client cert fail : " + err.Error())
 			}
 			client_cert = append(client_cert, cert)
 		}
@@ -263,20 +285,16 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 	info = append(info, fmt.Sprintf("%-25s : %v", "udp enc method ", cli_conf.Udp_crypt.String()))
 	info = append(info, fmt.Sprintf("%-25s : %v", "tls ", client.Tls.On))
 
-	if cli_conf.Connection_max_payload<64{
-		cli_conf.Idle_connection_remain_time=8
-	}else{
-		cli_conf.Idle_connection_remain_time = int(64.0/math.Sqrt(float64(cli_conf.Connection_max_payload)))
+	if cli_conf.Connection_max_payload < 64 {
+		cli_conf.Idle_connection_remain_time = 8
+	} else {
+		cli_conf.Idle_connection_remain_time = int(64.0 / math.Sqrt(float64(cli_conf.Connection_max_payload)))
 	}
 
 	info = append(info, fmt.Sprintf("%-25s : %v", "max connection payload", cli_conf.Connection_max_payload))
 	info = append(info, fmt.Sprintf("%-25s : %v", "idle conn reamin sec", cli_conf.Idle_connection_remain_time))
 
 	cli_conf.ConnectionHandler = NewClientConnectionHandler(cli_conf)
-
-	for _, v := range info {
-		fmt.Println(v)
-	}
 
 	if cli_conf.Domain_cache_time != 0 {
 		cli_conf.Cn_domain_ip_map = &sync.Map{}
@@ -286,11 +304,11 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, error) {
 
 	}
 
-	return cli_conf, nil
+	return cli_conf, info, nil
 
 }
 
-func LoadServerConfig(serve *Serve, i uint16) (*ServConfig, error) {
+func LoadServerConfig(serve *Serve, i uint16) (*ServConfig, []string, error) {
 	s := &ServConfig{}
 	s.Listen_port = serve.Listen_port
 	s.Id = i
@@ -298,18 +316,18 @@ func LoadServerConfig(serve *Serve, i uint16) (*ServConfig, error) {
 
 	crypt, err := Get_crypt(serve.Enc_method, serve.Password)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	s.Crypt = crypt
 	s.Udp_crypt = crypt
 
 	if serve.Tls.On {
 		if len(serve.Tls.Client_cert_paths) == 0 {
-			return nil, errors.New("client cert is nil")
+			return nil, nil, errors.New("client cert is nil")
 		}
 		cert, err := tls.LoadX509KeyPair(serve.Tls.Server_cert_path, serve.Tls.Server_private_key_path)
 		if err != nil {
-			return nil, errors.New("load server cert and private key exception:" + err.Error())
+			return nil, nil, errors.New("load server cert and private key exception:" + err.Error())
 		}
 		cli_cert := x509.NewCertPool()
 		for _, v := range serve.Tls.Client_cert_paths {
@@ -338,12 +356,8 @@ func LoadServerConfig(serve *Serve, i uint16) (*ServConfig, error) {
 	info = append(info, fmt.Sprintf("%-25s : %v", "udp enc method ", s.Udp_crypt.String()))
 	info = append(info, fmt.Sprintf("%-25s : %v", "tls ", serve.Tls.On))
 
-	for _, v := range info {
-		fmt.Println(v)
-	}
-
 	s.ServConnectionHandler = ServerConnectionhandler{}.new_server_connection_handler(s)
-	return s, nil
+	return s, info, nil
 }
 
 func domain_cache_clean_scheduel(domian_map *sync.Map, domian_cache_time int64) {

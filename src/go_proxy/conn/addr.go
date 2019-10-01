@@ -243,19 +243,32 @@ func (this *Domain) IsChinaAddr() bool {
 	if this.is_cn_check {
 		return this.is_cn
 	}
+	defer func() {
+		this.is_cn_check = true
+	}()
 
 	if this.domain == "" {
+		this.is_cn=true
 		return true
 	}
-	_domain := strings.Split(this.domain, ".")
 
+	rlock.RLock()
+	if _, ok := util.Cn_domain_map[this.String()];ok{
+		this.is_cn=true
+		return true
+	}
+	rlock.RUnlock()
+
+	_domain := strings.Split(this.domain, ".")
 	if _domain[len(_domain)-1] == "cn" {
+		this.is_cn=true
 		return true
 	}
 
 	d := ""
 	if len(_domain) == 1 {
-		d = _domain[0]
+		this.is_cn=true
+		return true
 	} else {
 		d = strings.Join(_domain[len(_domain)-2:], ".")
 	}
@@ -264,7 +277,6 @@ func (this *Domain) IsChinaAddr() bool {
 	rlock.RUnlock()
 
 	this.is_cn = ok
-	this.is_cn_check = true
 	return ok
 }
 
