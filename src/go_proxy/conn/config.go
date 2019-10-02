@@ -125,14 +125,13 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 		return nil, nil, errors.New("client mode can only http|socks5|iptables")
 	}
 	if client.Mode == Iptables && runtime.GOOS != "linux" {
-		fmt.Fprintf(os.Stderr, "iptables mode only support on linux")
+		fmt.Fprintf(os.Stderr, "iptables mode only support on linux\r\n")
 		os.Exit(1)
 	}
 	cli_conf.Mode = client.Mode
 	info = append(info, fmt.Sprintf("%-25s : %v", "mode ", cli_conf.Mode))
 
 	info = append(info, fmt.Sprintf("%-25s : %v", "ipv6", cli_conf.Ipv6))
-	info = append(info, fmt.Sprintf("%-25s : %v", "con max payload", cli_conf.Connection_max_payload))
 	info = append(info, fmt.Sprintf("%-25s : %v", "domain cache time", cli_conf.Domain_cache_time))
 	info = append(info, fmt.Sprintf("%-25s : %v", "udp timeout", Config.Udp_timeout))
 	if client.Mode != Http {
@@ -172,6 +171,7 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 			return nil, nil, errors.New("local port illegal")
 		}
 		cli_conf.Local_port = client.Local_Port
+		info = append(info, fmt.Sprintf("%-25s : %v", "local addr ", fmt.Sprintf("127.0.0.1:%d",cli_conf.Local_port)))
 	} else {
 		if client.Local_addr == "" {
 			return nil, nil, errors.New("local addr is nil")

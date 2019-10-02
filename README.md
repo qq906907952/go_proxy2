@@ -120,13 +120,14 @@ ipv6_white_list 不走代理的ipv6地址
 通常，linux做路由器要打开ip转发：
 
 编辑/etc/sysctl.conf
-添加一行
+添加两行
 
-net.ipv4.ip_forward=1
+    net.ipv4.ip_forward=1
+    net.ipv4.conf.br0.route_localnet=1   // 这条用于将外部网卡路由到本地 br0要改为局域网接口 或者改为all(net.ipv4.conf.all.route_localnet=1)
 
 命令行执行
 
-sysctl -p
+    sysctl -p
 
 然后iptables设置：
 
