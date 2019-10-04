@@ -256,8 +256,15 @@ udp中继：
     ip rule add fwmark  0x1/0x1 table 100
 
     ip route add local default dev lo table 100
+    
+执行: 
 
+    ./go_proxy -c client.json -s start 
 
+或者需要后台运行:
+
+    ./go_proxy -c client.json --daemon 
+  
 所有路由到192.168.1.1的设备理应都会通过代理访问
 
 
