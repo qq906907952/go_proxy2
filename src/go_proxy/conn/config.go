@@ -108,16 +108,6 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 		cli_conf.Connection_max_payload = client.Connection_max_payload
 	}
 
-	if cli_conf.Mode == Iptables {
-		cli_conf.Ipv6 = false
-		cli_conf.Domain_cache_time = 0
-	} else if client.Domain_cache_time != 0 && client.Domain_cache_time < 60 {
-		cli_conf.Domain_cache_time = 60
-	} else if client.Domain_cache_time > 24*60*60 {
-		client.Domain_cache_time = 24 * 60 * 60
-	} else {
-		cli_conf.Domain_cache_time = client.Domain_cache_time
-	}
 
 	//check mode
 	client.Mode = strings.ToLower(client.Mode)
@@ -129,8 +119,18 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 		os.Exit(1)
 	}
 	cli_conf.Mode = client.Mode
-	info = append(info, fmt.Sprintf("%-25s : %v", "mode ", cli_conf.Mode))
+	if cli_conf.Mode == Iptables {
+		cli_conf.Ipv6 = false
+		cli_conf.Domain_cache_time = 0
+	} else if client.Domain_cache_time != 0 && client.Domain_cache_time < 60 {
+		cli_conf.Domain_cache_time = 60
+	} else if client.Domain_cache_time > 24*60*60 {
+		client.Domain_cache_time = 24 * 60 * 60
+	} else {
+		cli_conf.Domain_cache_time = client.Domain_cache_time
+	}
 
+	info = append(info, fmt.Sprintf("%-25s : %v", "mode ", cli_conf.Mode))
 	info = append(info, fmt.Sprintf("%-25s : %v", "ipv6", cli_conf.Ipv6))
 	info = append(info, fmt.Sprintf("%-25s : %v", "domain cache time", cli_conf.Domain_cache_time))
 	info = append(info, fmt.Sprintf("%-25s : %v", "udp timeout", Config.Udp_timeout))

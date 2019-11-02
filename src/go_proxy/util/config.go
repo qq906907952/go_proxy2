@@ -2,6 +2,8 @@ package util
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,14 +11,12 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
-	"runtime"
 	"time"
-	"context"
-	"os/exec"
-	"bytes"
 )
 
 var (
@@ -92,7 +92,6 @@ type config struct {
 }
 
 func init() {
-
 	os.Setenv("GODEBUG", os.Getenv("GODEBUG")+",tls13=1")
 
 	state := flag.String("s", "", "{ start | restart | stop }")
@@ -102,6 +101,7 @@ func init() {
 	ipv6_white_list := flag.String("ipv6-white-list", "", "ipv6 white list addr list file")
 	verbose_info := flag.Bool("verbose", false, "print more info to stdout")
 	daemon := flag.Bool("daemon", false, "run background,only implement in linux")
+	wd := flag.String("work-dir", "", "")
 
 	flag.Parse()
 
@@ -166,6 +166,11 @@ func init() {
 	var daemon_run = func(exe string, args []string) {
 		check_system()
 		Check_pid_file()
+		if config == nil {
+			print_help()
+			os.Exit(1)
+		}
+
 		cmd := exec.Command(exe, args...)
 		var (
 			stdout bytes.Buffer
@@ -174,7 +179,6 @@ func init() {
 
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
-
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Setsid: true,
 		}
@@ -186,7 +190,7 @@ func init() {
 
 		ctx, cancel := context.WithCancel(context.TODO())
 		timeout_ctx, _ := context.WithTimeout(context.TODO(), 10*time.Second)
-		//
+
 		go func() {
 			defer cancel()
 
@@ -292,9 +296,19 @@ func init() {
 			}
 			args = append(args, v)
 		}
-		args = append(args, "-s", "start")
+		pwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "get pwd fail: %s\r\n", err.Error())
+			os.Exit(1)
+		}
+		args = append(args, "-s", "start", "--work-dir", pwd)
+		*wd = pwd
 		daemon_run(os.Args[0], args)
 		os.Exit(0)
+	}
+
+	if *wd!=""{
+		os.Chdir(*wd)
 	}
 
 	if config == nil || *config == "" {

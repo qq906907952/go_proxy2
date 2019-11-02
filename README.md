@@ -73,7 +73,7 @@
              "Remote_dns_addr": "8.8.8.8:53",         //远程dns地址
              "Connection_max_payload": 10,           //单个远程链接最大负载
              "Domain_cache_time": 3600,               //dns缓存时间 秒 0则不换存
-             "Udp_in_tcp": false,                     //是否用tcp发送udp包,仅socks5有效,且socks5 udp转发中不能分片,即socks5 udp FRAG字段必需为0，否则丢弃
+             "Udp_in_tcp": false,                     //是否用tcp发送udp包,仅socks5有效,且socks5 udp转发中不能分片,即socks5 udp FRAG字段必需为0，否则丢弃。如果flase且地址类型是域名，由远程服务器默认dns解释。
              "Tls": {                                 
                "On": true,                           //是否打开tls
                "Server_name":"ydx.com",              //证书域名，空则使用 Server_addr
@@ -113,8 +113,7 @@ ipv6_white_list 不走代理的ipv6地址
 
 客户端 iptables透明代理 仅支持linux  
 ------
-仅支持ipv4,且建议在64位机运行(由于我没有找到ipv6 udp 使用tproxy重定向后获取目的端口的方法(除非用原始套接字),故不支持ipv6,如果你知道,希望能告诉我或者提交pull request)
-一般来说，作为路由至少要有两块网卡，可以是虚拟机也可以是树梅派。假设eth0为连接公网接口，br0为局域网接口,ip为192.168.1.1。
+仅支持ipv4。建议在64位机运行。一般来说，作为路由至少要有两块网卡。假设eth0为连接公网接口，br0为局域网接口,ip为192.168.1.1。
 首先确保linux内核不低于2.6且安装了dnsmasq，iptables，ipset，且通过br0接口的机器能正常访问公网
 
 通常，linux做路由器要打开ip转发：
@@ -173,7 +172,8 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 
     取消no-resolv 和 bind-interfaces 注释
     
-    取消listen-address注释 并修改为 listen-address=127.0.0.1,192.168.1.1    //192.168.1.1 为br0网关地址 这里一定不要绑定为0.0.0.0,并且不要有监听"0.0.0.0"或者"::"地址的udp套接字
+    取消listen-address注释 并修改为 listen-address=127.0.0.1,192.168.1.1    //192.168.1.1 为br0网关地址 
+    这里一定不要绑定为0.0.0.0,并且尽量不要有监听"0.0.0.0"或者":::"地址的udp套接字(因为udp回路实现是直接绑定原始目的地址端口发送 如果某个端口监听0.0.0.0，导致地址冲突不能绑定)
     
     在最后添加
 
@@ -256,6 +256,7 @@ udp中继：
     ip rule add fwmark  0x1/0x1 table 100
 
     ip route add local default dev lo table 100
+    
     
 执行: 
 

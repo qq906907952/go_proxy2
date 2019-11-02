@@ -50,12 +50,31 @@ func Start_udp_serv(config *conn.ServConfig, g *sync.WaitGroup) {
 				return
 			}
 
-			udp_frame:=frame.(*conn.UdpFrame)
+			var (
+				udp_frame=frame.(*conn.UdpFrame)
+				ip []byte
+			)
+
+			switch udp_frame.Dest_addr.Type(){
+			case conn.Addr_type_ipv4,conn.Addr_type_ipv6:
+				ip=udp_frame.Dest_addr.ToHostBytes()
+			case conn.Addr_domain,conn.Addr_domain_try_ipv6:
+				ip, _, err = conn.Parse_local_domain(udp_frame.Dest_addr.String(), udp_frame.Dest_addr.Type()==conn.Addr_domain_try_ipv6, "")
+				if err!=nil{
+					util.Print_log(config.Id,"can not reslove domain %s: %s",udp_frame.Dest_addr.String(),err.Error())
+					return
+				}
+			default:
+				util.Print_log(config.Id,"udp server recv an unexpect frame")
+				return
+			}
+
+
 			key:=concatnate_addr(udp_frame.Local_addr,addr)
 			con,ok:=route.Load(key)
 			if ok{
 				con.(*net.UDPConn).WriteTo(udp_frame.Data,&net.UDPAddr{
-					IP:   udp_frame.Dest_addr.ToHostBytes(),
+					IP:   ip,
 					Port: udp_frame.Dest_addr.ToPortInt(),
 				})
 			}else{
@@ -71,7 +90,7 @@ func Start_udp_serv(config *conn.ServConfig, g *sync.WaitGroup) {
 				}()
 
 				con.WriteTo(udp_frame.Data,&net.UDPAddr{
-					IP:   udp_frame.Dest_addr.ToHostBytes(),
+					IP:   ip,
 					Port: udp_frame.Dest_addr.ToPortInt(),
 				})
 

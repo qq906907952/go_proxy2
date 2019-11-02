@@ -1,9 +1,11 @@
 package conn
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"go_proxy/util"
@@ -11,8 +13,6 @@ import (
 	"net"
 	"sync"
 	"time"
-	"bytes"
-	"encoding/binary"
 )
 
 // local connection join to remote dispatch
@@ -109,18 +109,18 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 			remote_connection_id: new_serv_con.Id,
 		}
 
-		switch local.(type){
+		switch local.(type) {
 		case *net.TCPConn:
-			new_local_connection.Proto=Proto_tcp
+			new_local_connection.Proto = Proto_tcp
 		case *net.UDPConn:
-			new_local_connection.Proto=Proto_udp
+			new_local_connection.Proto = Proto_udp
 		default:
 			return nil, errors.New("unknow connection type")
 		}
 
 		go new_serv_con.client_loop(cancel)
 
-		if int(new_serv_con.payload)==this.config.Connection_max_payload {
+		if int(new_serv_con.payload) == this.config.Connection_max_payload {
 			new_serv_con.ele = this.full_queue.PushFront(new_serv_con)
 			go new_serv_con.dispatcher_in_full_queue()
 		} else {
@@ -143,11 +143,11 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 }
 
 func (this *ServerConnection) client_loop(cancel func()) {
-	go func(){
-		for{
-			select{
-			case frame ,ok:= <-this.recvChan:
-				if ok{
+	go func() {
+		for {
+			select {
+			case frame, ok := <-this.recvChan:
+				if ok {
 					if util.Verbose_info {
 						if frame.GetFrameType() == Control_frame && frame.(*ControlFrame).Command == Command_close_conn {
 							util.Print_verbose("%s (in %s queue) local connection %d send close",
@@ -157,7 +157,7 @@ func (this *ServerConnection) client_loop(cancel func()) {
 						}
 					}
 					this.write_to_remote(frame)
-				}else{
+				} else {
 					return
 				}
 
@@ -168,7 +168,6 @@ func (this *ServerConnection) client_loop(cancel func()) {
 			}
 		}
 	}()
-
 
 	var err error
 	defer func() {
@@ -210,8 +209,8 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 		select {
 		case connection_id := <-this.local_close_notify:
 			this.id_chan <- connection_id
-			this.payload-=1
-			if this.payload==0 {
+			this.payload -= 1
+			if this.payload == 0 {
 				ctx, _ = context.WithTimeout(ctx, time.Duration(this.idel_conn_remain_sec)*time.Second)
 
 				if util.Verbose_info {
@@ -249,8 +248,8 @@ func (this *ServerConnection) dispatcher_in_idle_queue() {
 			local.Remote_ctx = this.ctx
 			local.remote_connection_id = this.Id
 			this.sendChan.Store(id, local_recv)
-			this.payload+=1
-			if int(this.payload)==this.handler.config.Connection_max_payload { // full payload
+			this.payload += 1
+			if int(this.payload) == this.handler.config.Connection_max_payload { // full payload
 				this.handler.idle_queue.Remove(this.ele)
 				this.ele = this.handler.full_queue.PushFront(this)
 
@@ -307,8 +306,8 @@ func (this *ServerConnection) dispatcher_in_full_queue() {
 		select {
 		case connection_id := <-this.local_close_notify:
 			this.id_chan <- connection_id
-			this.payload-=1
-			if this.payload==0 {
+			this.payload -= 1
+			if this.payload == 0 {
 				remove_and_close()
 				return
 			}
@@ -407,19 +406,16 @@ func connection_to_server(conf *ClientConfig) (net.Conn, error) {
 		c.SetWriteDeadline(time.Time{})
 
 	} else {
+		var i int = 0
+		for _, v := range conf.Crypt.Get_passwd() {
+			i += int(v)
+		}
+		i = (i % 100) + 64
+		b := make([]byte, i)
 
 		c.SetDeadline(time.Now().Add(time.Duration(util.Tcp_timeout) * time.Second))
-		b := make([]byte, int(conf.Crypt.Get_passwd()[0]))
-		if _, err := rand.Read(b); err != nil {
-			return nil, err
-		}
 
-		if _, err := c.Write(b); err != nil {
-			return nil, err
-		}
-
-		b = make([]byte, int(conf.Crypt.Get_passwd()[1]))
-		if _, err := io.ReadAtLeast(c, b, len(b)); err != nil {
+		if _, err := io.ReadAtLeast(c, b, i); err != nil {
 			return nil, err
 		}
 

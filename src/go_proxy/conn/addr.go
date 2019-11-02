@@ -48,7 +48,7 @@ func (this *AddrIPPort) parseFromString(s string, _type int) (Addr, error) {
 		sp = strings.Split(s, ":")
 		ip = net.ParseIP(sp[0]).To4()
 		if ip == nil {
-			return nil, (&exception.AddrErr{}).New("ipv4 ip format illegal")
+			return nil, (&exception.AddrErr{}).New("ipv6 ip format illegal")
 		}
 		ip_len = 4
 
@@ -288,14 +288,21 @@ func NewAddrFromString(addr string, domain_try_ipv6 bool) (Addr, error) {
 	if len(addr) < 4 {
 		return nil, exception.AddrErr{}.New("addr format illegal")
 	}
+	ipv6:=false
 
 	var sp []string
 	if addr[0] == '[' {
+		ipv6=true
 		sp = strings.Split(addr, "]:")
 		if len(sp[0])<1{
 			return nil, exception.AddrErr{}.New("addr format illegal")
 		}else{
 			sp[0]=sp[0][1:]
+			i:=strings.Index(sp[0],"%")
+			if i!=-1{
+				sp[0]=sp[0][:i]
+			}
+
 		}
 
 	} else {
@@ -306,16 +313,22 @@ func NewAddrFromString(addr string, domain_try_ipv6 bool) (Addr, error) {
 		return nil, exception.AddrErr{}.New("addr format illegal")
 	}
 
+	if ipv6{
+		addr=fmt.Sprintf("[%s]:%s",sp[0],sp[1])
+		return (&AddrIPPort{}).parseFromString(addr, Addr_type_ipv6)
+	}
+
 	if len(sp[0]) > 255 {
 		return nil, exception.AddrErr{}.New("addr too long")
 	}
+
+
 	if net.ParseIP(sp[0]).To4() != nil {
 		return (&AddrIPPort{}).parseFromString(addr, Addr_type_ipv4)
 	}
-	if net.ParseIP(sp[0]).To16() != nil {
-		return (&AddrIPPort{}).parseFromString(addr, Addr_type_ipv6)
-	}
+
 	return (&Domain{}).parseFromString(addr, domain_try_ipv6)
+
 
 }
 

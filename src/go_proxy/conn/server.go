@@ -579,14 +579,16 @@ func client_hand_shake(serv_con net.Conn, conf *ServConfig) (*Handshake_info, er
 		return Parse_handshake_info_from_byte(0, data)
 
 	} else {
-		serv_con.SetDeadline(time.Now().Add(time.Duration(util.Tcp_timeout) * time.Second))
-		if _, err := io.ReadAtLeast(serv_con, make([]byte, conf.Crypt.Get_passwd()[0]), int(conf.Crypt.Get_passwd()[0])); err != nil {
-			return nil, err
+		var i int =0
+		for _,v:=range conf.Crypt.Get_passwd(){
+			i+=int(v)
 		}
-		b := make([]byte, int(conf.Crypt.Get_passwd()[1]))
+		i=(i%100)+64
+		b:=make([]byte,i)
 		if _, err := rand.Read(b); err != nil {
 			return nil, err
 		}
+		serv_con.SetDeadline(time.Now().Add(time.Duration(util.Tcp_timeout) * time.Second))
 
 		if _, err := serv_con.Write(b); err != nil {
 			return nil, err
