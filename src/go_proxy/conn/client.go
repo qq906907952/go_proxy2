@@ -1,16 +1,20 @@
 package conn
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"go_proxy/util"
+	"golang.org/x/net/proxy"
 	"io"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -22,7 +26,6 @@ func (this *ConnectionHandler) Dispatch_client(local net.Conn) (*LocalConnection
 
 	if this.idle_queue.Len() != 0 {
 		serv_con := this.idle_queue.Back().Value.(*ServerConnection)
-
 		new_local_connection := &LocalConnection{
 			Local: local,
 		}
@@ -361,34 +364,90 @@ func NewClientConnectionHandler(conf *ClientConfig) *ConnectionHandler {
 	return ConnectionHandler{}.new_connection_handler(conf)
 }
 
+const http_proxy_req = "CONNECT %s HTTP/1.1\r\n" +
+	"Host: %s\r\n"
+
 func connection_to_server(conf *ClientConfig) (net.Conn, error) {
-
-	c, err := net.Dial("tcp", conf.Server_addr)
-	if err != nil {
-		return nil, err
-	}
-
+	var (
+		c   net.Conn = nil
+		err error
+	)
 	close := true
 	defer func() {
-		if close {
+		if close && c != nil {
 			c.Close()
 		}
 	}()
+
+	if conf.Front_proxy.User_front_proxy {
+		switch conf.Front_proxy.Front_proxy_schema {
+		case util.Http:
+			req := fmt.Sprintf(http_proxy_req, conf.Tcp_server_addr, conf.Tcp_server_addr)
+			if conf.Front_proxy.Auth_need {
+				req += fmt.Sprintf("Proxy-Authorization: Basic %s\r\n\r\n",
+					base64.StdEncoding.EncodeToString([]byte(
+						fmt.Sprintf("%s:%s", conf.Front_proxy.Username, conf.Front_proxy.Passwd))))
+			} else {
+				req += "\r\n"
+			}
+
+
+			c, err = net.Dial("tcp", conf.Front_proxy.Front_proxy_addr)
+			if err != nil {
+				return nil, err
+			}
+			c.SetDeadline(time.Now().Add(time.Duration(util.Tcp_timeout) * time.Second))
+			if _, err := c.Write([]byte(req)); err != nil {
+				return nil, err
+			}
+
+			resp, err := http.ReadResponse(bufio.NewReader(c), nil)
+			if err != nil {
+				return nil, err
+			}
+			if resp.StatusCode != 200 {
+				return nil, errors.New(fmt.Sprintf("http proxy serv return state code %d", resp.StatusCode))
+			}
+
+
+		case util.Socks5:
+			var auth *proxy.Auth = nil
+			if conf.Front_proxy.Auth_need {
+				auth = &proxy.Auth{
+					User:     conf.Front_proxy.Username,
+					Password: conf.Front_proxy.Passwd,
+				}
+			}
+			var d proxy.Dialer
+			d, err = proxy.SOCKS5("tcp", conf.Front_proxy.Front_proxy_addr, auth, nil)
+			if err != nil {
+				return nil, err
+			}
+			c, err = d.Dial("tcp", conf.Tcp_server_addr)
+			if err!=nil{
+				err=errors.New(err.Error())
+			}
+		default:
+			panic("unknow error")
+		}
+	} else {
+		c, err = net.Dial("tcp", conf.Tcp_server_addr)
+	}
+
+	if err != nil {
+		return nil, err
+	}
 
 	c.(*net.TCPConn).SetKeepAlive(true)
 	c.(*net.TCPConn).SetKeepAlivePeriod(10 * time.Second)
 	c.(*net.TCPConn).SetNoDelay(true)
 
 	if conf.Tls_conf != nil {
-
-		tls_conf := *conf.Tls_conf
-		tls_conf.Certificates = []tls.Certificate{conf.Client_cert[time.Now().UnixNano()%int64(len(conf.Client_cert))]}
-		serv_con := tls.Client(c, &tls_conf)
+		serv_con := tls.Client(c, conf.Tls_conf)
 		if err := serv_con.Handshake(); err != nil {
 			return nil, err
 		}
 		c = serv_con
-
 		h := Handshake_info{
 			Rand_byte:   []byte{},
 			Max_payload: uint16(conf.Connection_max_payload),

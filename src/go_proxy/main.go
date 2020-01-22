@@ -45,7 +45,7 @@ func main() {
 			os.Exit(1)
 		}
 		go local_proxy.StartLocalproxy(conf, g)
-		s=append(s,append(info,"#########################################")...)
+		s=append(s,info...)
 
 	}
 
@@ -60,9 +60,9 @@ func main() {
 		}
 		go server.Start_tcp_server(conf, g)
 		go server.Start_udp_serv(conf, g)
-		s=append(s,append(info,"#########################################")...)
+		s=append(s,info...)
 	}
-
+	s=append(s,"#########################################")
 	g.Wait()
 
 	if runtime.GOOS=="linux"{
@@ -80,7 +80,7 @@ func main() {
 		fmt.Println(v)
 	}
 	fmt.Println()
-	fmt.Println("run successful まいにちにミクミクしてあげるよ~~")
+	fmt.Println("run successful")
 	signal_notify := make(chan os.Signal, 1)
 	ignore_signal:=make(chan os.Signal, 1)
 	signal.Notify(signal_notify,syscall.SIGINT, syscall.SIGKILL, syscall.SIGSTOP, syscall.SIGABRT, syscall.SIGTERM, syscall.SIGUSR1)

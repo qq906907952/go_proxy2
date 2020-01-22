@@ -4,14 +4,15 @@
     {
       "Tls": {
         "On": true,
-        "Tcp_encrypt":true,
-        "Server_cert_path": "cert/serv/server.crt",
-        "Server_private_key_path": "cert/serv/server.key",
-        "Client_cert_paths": [
+        "Tcp_encrypt":false,
+        "Server_cert": "cert/serv/server.crt",
+        "Server_private_key": "cert/serv/server.key",
+        "Client_certs": [
           "cert/client/client.crt"
         ]
       },
-      "Listen_port": 9999,
+      "Tcp_listen_port": 9999,
+      "Udp_listen_port": 9999,
       "Enc_method": "chacha20",
       "Password": "12345678901234567890123456789012"
     }

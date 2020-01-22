@@ -31,7 +31,7 @@ var (
 	Tcp_timeout               = 30
 )
 
-const Pid_file = "/var/run/miku_go_proxy.pid"
+const Pid_file = "/var/run/go_proxy.pid"
 
 const (
 	Enc_aes_256_cfb = "aes-256-cfb"
@@ -53,16 +53,16 @@ type Client struct {
 		Server_name    string
 		Tcp_encrypt    bool
 		Root_cert_path string
-		Client_cert    []struct {
-			Cert        string
-			Private_key string
-		}
+		Private_key    string
+		Certificate    string
 	}
 	Ipv6                   bool
 	Connection_max_payload int
 	Local_addr             string
 	Local_Port             int
-	Server_addr            string
+	Interface              string
+	Tcp_server_addr        string
+	Udp_server_addr        string
 	Enc_method             string
 	Password               string
 	Remote_dns_addr        string
@@ -73,15 +73,16 @@ type Client struct {
 
 type Serve struct {
 	Tls struct {
-		On                      bool
-		Tcp_encrypt             bool
-		Server_cert_path        string
-		Server_private_key_path string
-		Client_cert_paths       []string
+		On                 bool
+		Tcp_encrypt        bool
+		Server_private_key string
+		Server_cert        string
+		Client_certs       []string
 	}
-	Listen_port int
-	Enc_method  string
-	Password    string
+	Tcp_listen_port int
+	Udp_listen_port int
+	Enc_method      string
+	Password        string
 }
 
 type config struct {
@@ -307,7 +308,7 @@ func init() {
 		os.Exit(0)
 	}
 
-	if *wd!=""{
+	if *wd != "" {
 		os.Chdir(*wd)
 	}
 

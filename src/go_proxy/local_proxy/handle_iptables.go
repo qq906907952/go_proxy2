@@ -32,47 +32,8 @@ const (
 	IP_TRANSPARENT       = 0x13
 )
 
-func get_tcp_origin_dest(con *net.TCPConn, config *conn.ClientConfig) (conn.Addr, error) {
-	file, err := con.File()
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	t, err := conn.NewAddrFromString(con.RemoteAddr().String(), false)
-
-	if err != nil {
-		return nil, err
-	}
-	switch t.Type() {
-	case conn.Addr_type_ipv4:
-		addr, err := syscall.GetsockoptIPv6Mreq(int(file.Fd()), IPPROTO_IP, SO_ORIGIN_DST)
-		if err != nil {
-			return nil, err
-		}
-		return conn.NewAddrFromByte(addr.Multiaddr[4:8], addr.Multiaddr[2:4], conn.Addr_type_ipv4)
-	case conn.Addr_type_ipv6:
-		if !config.Ipv6 {
-			return nil, errors.New("ipv6 set the false but recv an ipv6 connection")
-		}
-		addr, err := syscall.GetsockoptICMPv6Filter(int(file.Fd()), IPPROTO_IPV6, IPT6_SO_ORIGIN_DST)
-		if err != nil {
-			return nil, err
-		}
-
-		data := make([]byte, 0, 32)
-		for _, v := range addr.Data {
-			data = append(data, byte(v&0xff))
-			data = append(data, byte((v>>8)&0xff))
-			data = append(data, byte((v>>16)&0xff))
-			data = append(data, byte((v>>24)&0xff))
-		}
-
-		return conn.NewAddrFromByte(data[8:24], data[2:4], conn.Addr_type_ipv6)
-		return nil, errors.New("iptables not support ipv6")
-	default:
-		return nil, errors.New("unknow error")
-	}
+func get_tcp_origin_dest(con *net.TCPConn) (conn.Addr, error) {
+	return conn.NewAddrFromString(con.LocalAddr().String(), false)
 }
 
 func get_udp_origin_dest(oob []byte, ipv6 bool) (conn.Addr, error) {
@@ -96,7 +57,7 @@ func get_udp_origin_dest(oob []byte, ipv6 bool) (conn.Addr, error) {
 func handle_iptables(con *net.TCPConn, config *conn.ClientConfig) error {
 	defer conn.CloseTcp(con)
 
-	addr, err := get_tcp_origin_dest(con, config)
+	addr, err := get_tcp_origin_dest(con)
 	if err != nil {
 		return err
 	}
@@ -189,6 +150,7 @@ func handle_iptables_udp_forward_udp(ul, remote, remote_dns *net.UDPConn, config
 	for {
 		data, oob := make([]byte, conn.Udp_buf_size), make([]byte, 1024)
 		i, oobi, _, addr, err := ul.ReadMsgUDP(data, oob)
+
 		go func(data, oob []byte, addr *net.UDPAddr, err error) {
 			if err != nil {
 				util.Print_log(config.Id, "udp read from local fail: %s", err.Error())
@@ -203,9 +165,10 @@ func handle_iptables_udp_forward_udp(ul, remote, remote_dns *net.UDPConn, config
 
 			port := make([]byte, 2)
 			binary.BigEndian.PutUint16(port, uint16(addr.Port))
-			local_addr, err := conn.NewAddrFromByte(addr.IP.To4(), port, conn.Addr_type_ipv4)
+			local_addr, err := conn.NewAddrFromString(addr.String(), false)
+
 			if err != nil {
-				util.Print_log(config.Id, "udp read fail: %s", err.Error())
+				util.Print_log(config.Id, "udp local addr parse fail: %s", err.Error())
 				return
 			}
 
@@ -229,8 +192,8 @@ func write_to_remote(remote, remote_dns *net.UDPConn, config *conn.ClientConfig,
 				Dest_addr:  config.Remoted_dns,
 				Data:       data,
 			}).ToBytes()), &net.UDPAddr{
-				IP:   config.Server_Addr.ToHostBytes(),
-				Port: config.Server_Addr.ToPortInt(),
+				IP:   config.Udp_Server_Addr.ToHostBytes(),
+				Port: config.Udp_Server_Addr.ToPortInt(),
 				Zone: "",
 			})
 			return nil
@@ -248,8 +211,8 @@ func write_to_remote(remote, remote_dns *net.UDPConn, config *conn.ClientConfig,
 			Dest_addr:  dest_addr,
 			Data:       data,
 		}).ToBytes()), &net.UDPAddr{
-			IP:   config.Server_Addr.ToHostBytes(),
-			Port: config.Server_Addr.ToPortInt(),
+			IP:   config.Udp_Server_Addr.ToHostBytes(),
+			Port: config.Udp_Server_Addr.ToPortInt(),
 			Zone: "",
 		})
 
@@ -258,7 +221,7 @@ func write_to_remote(remote, remote_dns *net.UDPConn, config *conn.ClientConfig,
 
 }
 
-func write_to_local(udp_frame *conn.UdpFrame) error {
+func write_to_local(udp_frame *conn.UdpFrame,zone_id uint32) error {
 	var (
 		fd                int
 		err               error
@@ -269,9 +232,11 @@ func write_to_local(udp_frame *conn.UdpFrame) error {
 				for i, v := range addr.ToHostBytes() {
 					ip[i] = v
 				}
+
 				return &syscall.SockaddrInet6{
 					Port: addr.ToPortInt(),
 					Addr: ip,
+					ZoneId:zone_id,
 				}
 			case conn.Addr_type_ipv4:
 				var ip [4]byte
@@ -299,7 +264,7 @@ func write_to_local(udp_frame *conn.UdpFrame) error {
 		}
 		defer syscall.Close(fd)
 
-		if err := syscall.SetsockoptInt(fd, IPPROTO_IPV6, IP_TRANSPARENT, 1); err != nil {
+		if err := syscall.SetsockoptInt(fd, IPPROTO_IP, IP_TRANSPARENT, 1); err != nil {
 			return err
 		}
 		if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, SO_REUSEPORT, 1); err != nil {
@@ -358,6 +323,7 @@ func remote_udp_2_udp_loop(remote, local *net.UDPConn, config *conn.ClientConfig
 				util.Print_log(config.Id, err.Error())
 				return
 			}
+
 			if frame.GetFrameType() != conn.Udp_Frame {
 				util.Print_log(config.Id, "udp recv an unexpect frame")
 				return
@@ -370,7 +336,7 @@ func remote_udp_2_udp_loop(remote, local *net.UDPConn, config *conn.ClientConfig
 					Port: f.Local_addr.ToPortInt(),
 				})
 			} else {
-				if err := write_to_local(f); err != nil {
+				if err := write_to_local(f,config.Zone_id); err != nil {
 					util.Print_log(config.Id, err.Error())
 					return
 				}
@@ -443,7 +409,7 @@ func remote_udp_2_tcp_loop(data_chan chan *conn.UdpFrame, config *conn.ClientCon
 									Port: frame.Local_addr.ToPortInt(),
 								})
 							} else {
-								if err := write_to_local(frame); err != nil {
+								if err := write_to_local(frame,config.Zone_id); err != nil {
 									util.Print_log(config.Id, err.Error())
 									return
 								}

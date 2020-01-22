@@ -13,7 +13,7 @@ import (
 
 func Start_tcp_server(config *conn.ServConfig,g *sync.WaitGroup){
 	listen,err:=net.ListenTCP("tcp",&net.TCPAddr{
-		Port: config.Listen_port,
+		Port: config.Tcp_listen_port,
 	})
 	if err!=nil{
 		fmt.Fprintf(os.Stderr,err.Error()+"\r\n")

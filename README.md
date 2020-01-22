@@ -27,13 +27,15 @@
                  "Tls": {
                    "On": true,                                           // 是否打开tls 
                    "Tcp_encrypt":false,                                  //tcp封装tls之前是否加密，需要与客户端一致
-                   "Server_cert_path": "cert/serv/server.crt",           //服务器证书
-                   "Server_private_key_path": "cert/serv/server.key",    //服务器私钥
-                   "Client_cert_paths": [                                //客户端证书路径 只有添加证书的客户端才能正常连接
-                     "cert/client/client.crt"
+                   "Server_cert": "cert/serv/server.crt",                //服务器证书链
+                   "Server_private_key": "cert/serv/server.key",         //服务器私钥
+                   "Client_certs": [                                     //客户端证书                                          
+                     "cert/client/client1.crt"，
+                     "cert/client/client2.crt"
                    ]
                  },
-                 "Listen_port": 9999,                                    //监听端口
+                "Tcp_listen_port": 9999,                                 //tcp监听端口
+                "Udp_listen_port": 9999,                                 //udp监听端口
                  "Enc_method": "chacha20",                               //加密方式，仅支持chacha20和aes-256-cfb
                  "Password": ""                                          //密码，必须为32个字符
                }
@@ -66,26 +68,23 @@
              "Mode": "http",                    //模式 本地代理只支持http和socks5
              "Ipv6": true,                      //是否打开ipv6支持 需要服务器支持ipv6
              "Local_addr": "0.0.0.0:1234",      //本地监听地址 可以ip或域名
-             "Server_addr": "1.2.3.4:1234",     //服务器地址
+             "Tcp_server_addr": "ydx.com:4343", //tcp服务器地址
+             "Udp_server_addr": "ydx.com:4343", //udp服务器地址,http代理可以不填
+             "Front_proxy":"http://username:passwd@127.0.0.1:8080/"    //前置代理 支持http socks5
              "Enc_method": "chacha20",          //加密方式 
              "Password": "",                    //密码 必须32个字符
              "Local_dns_addr": "114.114.114.114:53",  //本地dns地址
              "Remote_dns_addr": "8.8.8.8:53",         //远程dns地址
              "Connection_max_payload": 10,           //单个远程链接最大负载
-             "Domain_cache_time": 3600,               //dns缓存时间 秒 0则不换存
-             "Udp_in_tcp": false,                     //是否用tcp发送udp包,仅socks5有效,且socks5 udp转发中不能分片,即socks5 udp FRAG字段必需为0，否则丢弃。如果flase且地址类型是域名，由远程服务器默认dns解释。
+             "Domain_cache_time": 3600,               //dns缓存时间 秒 0则不缓存
+             "Udp_in_tcp": false,                     //是否用tcp发送udp包 如果flase且地址类型是域名，由远程服务器默认dns解释。
              "Tls": {                                 
-               "On": true,                           //是否打开tls
-               "Server_name":"ydx.com",              //证书域名，空则使用 Server_addr
-               "Tcp_encrypt": false,                 //tcp封装tls之前是否加密，需要与服务端一致
-               "Root_cert_path": "cert/serv/root.crt",  //服务器根证书
-               "Client_cert": [                         //客户端证书 多个则随机选一个
-                 {
-                   "Cert": "cert/client/client.crt",           //证书
-                   "Private_key": "cert/client/client.key"     //私钥
-                 }
-       
-               ]
+               "On": true,                                 //是否打开tls
+               "Server_name":"ydx.com",                    //证书域名，空则使用 Server_addr
+               "Tcp_encrypt": false,                       //tcp封装tls之前是否加密，需要与服务端一致
+               "Root_cert_path": "cert/serv/root.crt",     //服务器根证书
+               "Private_key": "cert/client/client.key",    //客户端私钥
+               "Certificate": "cert/client/client.crt"     //客户端证书链
              }
            },
           
@@ -113,16 +112,19 @@ ipv6_white_list 不走代理的ipv6地址
 
 客户端 iptables透明代理 仅支持linux  
 ------
-仅支持ipv4。建议在64位机运行。一般来说，作为路由至少要有两块网卡。假设eth0为连接公网接口，br0为局域网接口,ip为192.168.1.1。
+建议在64位机运行,支持ipv4，ipv6。一般来说，作为路由至少要有两块网卡。假设eth0为连接公网接口，br0为局域网接口,ip为192.168.1.1。
 首先确保linux内核不低于2.6且安装了dnsmasq，iptables，ipset，且通过br0接口的机器能正常访问公网
 
 通常，linux做路由器要打开ip转发：
 
 编辑/etc/sysctl.conf
-添加两行
+添加三行
 
     net.ipv4.ip_forward=1
-    net.ipv4.conf.br0.route_localnet=1   // 这条用于将外部网卡路由到本地 br0要改为局域网接口 或者改为all(net.ipv4.conf.all.route_localnet=1)
+    
+    net.ipv4.conf.all.rp_filter=0
+    
+    net.ipv4.conf.all.route_localnet=1   
 
 命令行执行
 
@@ -132,7 +134,7 @@ ipv6_white_list 不走代理的ipv6地址
 
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 
-这样连接到br0的机器应该能访问公网了(这里省略dhcp等地址获取问题，没有配置dhcp服务器需要手动设置ip地址)。
+这样连接到br0的机器应该能访问公网了(这里省略dhcp地址获取等问题，没有配置dhcp服务器需要手动设置ip地址)。
 
 
 修改client.json
@@ -141,25 +143,24 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
          "Clients": [    
             {
               "Mode": "iptables",                      //模式iptables
+              "ipv6":false,                            //是否打开ipv6支持 需要服务器支持ipv6
               "Local_port": 3939,                      // 本地监听端口
-              "Server_addr": "ydx.com:4343",           //服务器地址
+              "Front_proxy":"http://username:passwd@127.0.0.1:8080/"    //前置代理 支持http socks5
+              "Interface":"br0",                       //接口名称
+              "Tcp_server_addr": "ydx.com:4343",       //tcp服务器地址
+              "Udp_server_addr": "ydx.com:4343",       //udp服务器地址
               "Enc_method": "chacha20",                //加密方式 
               "Password": "",                          //密码 必须32个字符
               "Remote_dns_addr": "8.8.4.4:53",         //远程dns地址
-              "Connection_max_payload": 10,           //单个远程链接最大负载
+              "Connection_max_payload": 10,            //单个远程链接最大负载
               "Udp_in_tcp": false,                     //是否用tcp发送udp包
               "Tls": {
-                "On": true,                             //是否打开tls
-                "Server_name":"ydx.com",                //证书域名，空则使用 Server_addr
-                "Tcp_encrypt": false,                   //tcp封装tls之前是否加密，需要与服务端一致
-                "Root_cert_path": "cert/serv/root.crt",  //服务器根证书
-                "Client_cert": [                         //客户端证书 多个则随机选一个
-                  {
-                    "Cert": "cert/client/client.crt",        //证书
-                    "Private_key": "cert/client/client.key"  //私钥
-                  }
-        
-                ]
+                "On": true,                                 //是否打开tls
+                "Server_name":"ydx.com",                    //证书域名，空则使用 Server_addr
+                "Tcp_encrypt": false,                       //tcp封装tls之前是否加密，需要与服务端一致
+                "Root_cert_path": "cert/serv/root.crt",     //服务器根证书
+                "Private_key": "cert/client/client.key",    //客户端私钥
+                "Certificate": "cert/client/client.crt"     //客户端证书链
               }
             }
       
@@ -173,7 +174,7 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
     取消no-resolv 和 bind-interfaces 注释
     
     取消listen-address注释 并修改为 listen-address=127.0.0.1,192.168.1.1    //192.168.1.1 为br0网关地址 
-    这里一定不要绑定为0.0.0.0,并且尽量不要有监听"0.0.0.0"或者":::"地址的udp套接字(因为udp回路实现是直接绑定原始目的地址端口发送 如果某个端口监听0.0.0.0，导致地址冲突不能绑定)
+    这里一定不要绑定为0.0.0.0,并且尽量不要有监听"0.0.0.0"或者":::"地址的udp套接字(因为udp回路实现是直接绑定原始目的地址端口发送(IP_TRANSPARENT) 如果某个端口监听0.0.0.0，导致地址冲突不能绑定)
     
     在最后添加
 
@@ -195,61 +196,41 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 
 在go_proxy2目录下执行(bash环境 不同shell语法不同)
 
-    ipset create cn_ipv4 hash:net
-
-    for line in `cat china_ipv4`; do ipset add cn_ipv4 $line; done;
-
-添加局域网和服务端地址到ipset：
-
     ipset create local hash:net
 
-    ipset add local 127.0.0.0/8
-
-    ipset add local 192.168.0.0/16
-
-    ipset add local 169.254.0.0/16
-
-    ipset add local 172.16.0.0/12
-
-    ipset add local 10.0.0.0/8
-    
-    ipset add local 224.0.0.0/4
-    
-    ipset add local 255.255.255.255/32
-    
     ipset add local 99.99.99.99/32          //99.99.99.99换成服务端ip
 
-
-
+    for line in `cat china_ipv4`; do ipset add local $line; done;
+        
 创建新链:
-
-    iptables -t nat -N GO_PROXY
-
-
-局域网和服务端地址return,非中国ip重定向到本地：
-
-    iptables -t nat -A GO_PROXY -p tcp -m set  --match-set local dst -j RETURN
-
-    iptables -t nat -A GO_PROXY -p tcp -m set  --match-set cn_ipv4 dst -j RETURN
-
-    iptables -t nat -A GO_PROXY -p tcp  -j DNAT --to 127.0.0.1:9999               //9999改成客户端本地监听的端口
-
-    iptables -t nat -A PREROUTING -p tcp -j GO_PROXY
-
-    iptables -t nat -A OUTPUT -p tcp -j GO_PROXY
-
-
-udp中继：
 
     iptables -t mangle -N GO_PROXY
 
-    iptables -t mangle -A GO_PROXY -p udp -m set  --match-set local dst -j RETURN
 
-    iptables -t mangle -A GO_PROXY -p udp -m set  --match-set cn_ipv4  dst -j RETURN
+局域网和服务端地址return,非中国ip tproxy到本地：
 
-    iptables -t mangle -A GO_PROXY -p udp -j TPROXY --on-ip 127.0.0.1 --on-port 9999 --tproxy-mark 0x1/0x1      //9999改成客户端本地监听的端口
+    iptables -t mangle -A GO_PROXY -m set --match-set local dst -j RETURN
+
+tcp透明代理：
+
+    iptables -t mangle  -A GO_PROXY -p tcp -j TPROXY --on-ip 127.0.0.1 --on-port 9999 --tproxy-mark 0x1/0x1    #9999改成客户端本地监听的端口
+
+    iptables -t mangle -A PREROUTING -p tcp -j GO_PROXY
+    
+ 
+udp透明代理：
+
+    iptables -t mangle -A GO_PROXY -p udp -j TPROXY --on-ip 127.0.0.1 --on-port 9999 --tproxy-mark 0x1/0x1      #9999改成客户端本地监听的端口
 
     iptables -t mangle -A PREROUTING -p udp -j GO_PROXY
+
+路由器本地流量tproxy：
+
+   //由于路由器本身流量不走PREROUTING链，需要OUTPUT链set mark重新路由到PREROUTING
+            
+    iptables -t mangle -A OUTPUT -m set --match-set local dst -j RETURN
+                
+    iptables -t mangle -A OUTPUT -j MARK --set-mark 0x1/0x1
 
 添加路由策略：
 
@@ -258,6 +239,42 @@ udp中继：
     ip route add local default dev lo table 100
     
     
+ipv6 透明代理
+
+    sysctl net.ipv6.conf.all.forwarding=1
+
+    ipset create ipv6_whitelist hash:net family inet6
+    
+    for line in `cat ipv6_white_list`; do ipset add ipv6_whitelist $line; done;
+    
+    ip6tables -t mangle  -N GO_PROXY
+    
+    ip6tables -t mangle -A GO_PROXY -m set --match-set ipv6_whitelist dst -j RETURN
+    
+    #tcp
+    
+    ip6tables -t mangle  -A GO_PROXY -p tcp -j TPROXY --on-ip ::1 --on-port 9999 --tproxy-mark 0x1/0x1    #9999改成客户端本地监听的端口
+
+    ip6tables -t mangle -A PREROUTING -p tcp -j GO_PROXY
+    
+    #udp 
+    
+    ip6tables -t mangle -A GO_PROXY -p udp -j TPROXY --on-ip ::1 --on-port 9999 --tproxy-mark 0x1/0x1      #9999改成客户端本地监听的端口
+    
+    ip6tables -t mangle -A PREROUTING -p udp -j GO_PROXY
+    
+    #reroute
+    
+    ip6tables -t mangle -A OUTPUT -m set --match-set ipv6_whitelist dst -j RETURN
+    
+    ip6tables -t mangle -A OUTPUT -j MARK --set-mark 0x1/0x1
+    
+    #add route rule
+    
+    ip -6 rule add fwmark  0x1/0x1 table 100
+    
+    ip -6 route add local default dev lo table 100
+        
 执行: 
 
     ./go_proxy -c client.json -s start 
@@ -273,9 +290,9 @@ udp中继：
 -------
 开启tls会进行双向校验，因此需要生成服务端与客户端的私钥与自签证书。
 
-服务端需要自身证书与私钥，并添加客户端的证书作为校验(服务端证书链不能超过2级,使用tls不是出于安全考虑而是加密和混淆流量)。
+服务端需要自身证书与私钥，并添加客户端的证书作为校验。
 
-客户端需要自身证书与私钥，并添加服务端的根证书信任(客户端证书链只能一级)。
+客户端需要自身证书与私钥，并添加服务端的根证书信任。
 
 cert目录下包含生成证书的脚本。
 
@@ -287,7 +304,5 @@ cert目录下包含生成证书的脚本。
 切到cert/client目录下 执行 bash create_cli_crt.sh 生成单个客户端证书与私钥
 
 bash create_cli_crt.sh ${n}  批量生成 ${n}为整数
-
-
 
  

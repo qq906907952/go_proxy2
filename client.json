@@ -5,7 +5,8 @@
       "Mode": "http",
       "Ipv6": false,
       "Local_addr": "0.0.0.0:3939",
-      "Server_addr": "127.0.0.1:9999",
+      "Front_proxy":"http://username:passwd@127.0.0.1:8080/",
+      "Tcp_server_addr": "133.130.98.136:33999",
       "Enc_method": "chacha20",
       "Password": "12345678901234567890123456789012",
       "Local_dns_addr": "114.114.114.114:53",
@@ -15,22 +16,19 @@
       "Tls": {
         "On": true,
         "Server_name":"ydx.com",
-        "Tcp_encrypt": true,
+        "Tcp_encrypt": false,
         "Root_cert_path": "cert/serv/root.crt",
-        "Client_cert": [
-          {
-            "Cert": "cert/client/client.crt",
-            "Private_key": "cert/client/client.key"
-          }
-
-        ]
+        "Private_key": "cert/client/client.key",
+        "Certificate": "cert/client/client.crt"
       }
     },
     {
       "Mode": "socks5",
       "Ipv6": false,
-      "Local_addr": "0.0.0.0:4949",
-      "Server_addr": "ydx.com:4343",
+      "Local_addr": "0.0.0.0:19191",
+      "Front_proxy":"http://username:passwd@127.0.0.1:8080/",
+      "Tcp_server_addr": "133.130.98.136:33999",
+      "Udp_server_addr": "133.130.98.136:9999",
       "Enc_method": "chacha20",
       "Password": "12345678901234567890123456789012",
       "Local_dns_addr": "114.114.114.114:53",
@@ -40,21 +38,21 @@
       "Udp_in_tcp": false,
       "Tls": {
         "On": true,
-        "Server_name": "ydx.com",
+        "Server_name":"ydx.com",
         "Tcp_encrypt": false,
         "Root_cert_path": "cert/serv/root.crt",
-        "Client_cert": [
-          {
-            "Cert": "cert/client/client.crt",
-            "Private_key": "cert/client/client.key"
-          }
-        ]
+        "Private_key": "cert/client/client.key",
+        "Certificate": "cert/client/client.crt"
       }
     },
     {
       "Mode": "iptables",
+      "Ipv6":false,
+      "Interface": "wlan0",
       "Local_port": 9999,
-      "Server_addr": "ydx.com:4343",
+      "Front_proxy":"http://username:passwd@127.0.0.1:8080/",
+      "Tcp_server_addr": "133.130.98.136:33999",
+      "Udp_server_addr": "133.130.98.136:9999",
       "Enc_method": "chacha20",
       "Password": "12345678901234567890123456789012",
       "Remote_dns_addr": "8.8.4.4:53",
@@ -65,13 +63,8 @@
         "Server_name":"ydx.com",
         "Tcp_encrypt": false,
         "Root_cert_path": "cert/serv/root.crt",
-        "Client_cert": [
-          {
-            "Cert": "cert/client/client.crt",
-            "Private_key": "cert/client/client.key"
-          }
-
-        ]
+        "Private_key": "cert/client/client.key",
+        "Certificate": "cert/client/client.crt"
       }
     }
 

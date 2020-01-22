@@ -145,7 +145,7 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 				continue
 			}
 
-			select{
+			select {
 			case local.SendChan <- frame:
 			case <-local.Remote_ctx.Done():
 				continue
@@ -237,6 +237,7 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 		}
 	}()
 
+main_loop:
 	for {
 		buf := make([]byte, conn.Udp_buf_size)
 		i, from, err := ul.ReadFromUDP(buf)
@@ -249,9 +250,6 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 			util.Print_log(config.Id, "recv socks5 udp data too short")
 			continue
 		}
-		if buf[2] != 0 {
-			continue
-		}
 
 		addr, _i, err := get_socks5_dest_addr(bytes.NewReader(buf[4:]), config, buf[3])
 
@@ -259,6 +257,61 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 			util.Print_log(config.Id, "get socks5 udp dest addr fail: %s ", err.Error())
 			continue
 		}
+
+		var data []byte
+
+		if buf[2] != 0 { // handle fragment , beta
+			frag := buf[2] >> 7
+			current_position := buf[2] & 127
+			if frag != 1 || current_position < 1 {
+				continue
+			}
+
+			data = buf[_i+4 : i]
+			for {
+				buf := make([]byte, conn.Udp_buf_size)
+				i, _from, err := ul.ReadFromUDP(buf)
+				if err != nil {
+					util.Print_log(config.Id, "udp read fail: %s", err.Error())
+					continue main_loop
+				}
+				_addr, _i, err := get_socks5_dest_addr(bytes.NewReader(buf[4:]), config, buf[3])
+				if err != nil {
+					util.Print_log(config.Id, "read socks5 udp fragment fail: %s ", err.Error())
+					continue main_loop
+				}
+
+				frag = buf[2] >> 7
+				position := buf[2] & 127
+
+				if frag == 0 {
+					if position > current_position {
+						data = bytes.Join([][]byte{data, buf[_i+4 : i]}, nil)
+					} else if position == 0 {
+						addr = _addr
+						from = _from
+						data = buf[_i+4 : i]
+						util.Print_log(config.Id, "socks5 recv fragment without end")
+					} else {
+						util.Print_log(config.Id, "socks5 recv unexpect fragment")
+						continue main_loop
+					}
+					break
+				} else {
+					if position <= current_position {
+						util.Print_log(config.Id, "socks5 recv unexpect fragment")
+						continue main_loop
+					}else{
+						current_position=position
+						data = bytes.Join([][]byte{data, buf[_i+4 : i]}, nil)
+					}
+				}
+
+			}
+		} else {
+			data = buf[_i+4 : i]
+		}
+
 		go func(local_addr *net.UDPAddr, dest conn.Addr, data []byte) {
 			addr, is_cn, err := convert_addr(addr, config)
 			if err != nil {
@@ -295,48 +348,48 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 
 			}
 
-		}(from, addr, buf[_i+4:i])
+		}(from, addr, data)
 
 	}
 }
 
-func handle_socks5_udp_forward_udp(ul ,remote *net.UDPConn, config *conn.ClientConfig) {
+func handle_socks5_udp_forward_udp(ul, remote *net.UDPConn, config *conn.ClientConfig) {
 	var (
-		cn_route     = &sync.Map{}
+		cn_route = &sync.Map{}
 	)
 
 	go func() {
-			for {
-				buf := make([]byte, conn.Udp_buf_size)
-				i, err := remote.Read(buf)
-				if err != nil {
-					continue
-				}
-				go func(data []byte) {
-					data, err := config.Udp_crypt.Decrypt(data)
-					if err != nil {
-						util.Print_log(config.Id, err.Error())
-						return
-					}
-					frame, err := conn.ParseBytesToFrame(data)
-
-					if err != nil {
-						util.Print_log(config.Id, "can not parse udp data to frame: %s", err.Error())
-						return
-					}
-					if frame.GetFrameType() != conn.Udp_Frame {
-						util.Print_log(config.Id, "udp recv an not udp frame")
-						return
-					}
-					udp_frame := frame.(*conn.UdpFrame)
-					ul.WriteToUDP(bytes.Join([][]byte{{0, 0, 0, 1, 0, 0, 0, 0, 0, 0}, udp_frame.Data}, nil),
-						&net.UDPAddr{
-							IP:   udp_frame.Local_addr.ToHostBytes(),
-							Port: udp_frame.Local_addr.ToPortInt(),
-						})
-				}(buf[:i])
-
+		for {
+			buf := make([]byte, conn.Udp_buf_size)
+			i, err := remote.Read(buf)
+			if err != nil {
+				continue
 			}
+			go func(data []byte) {
+				data, err := config.Udp_crypt.Decrypt(data)
+				if err != nil {
+					util.Print_log(config.Id, err.Error())
+					return
+				}
+				frame, err := conn.ParseBytesToFrame(data)
+
+				if err != nil {
+					util.Print_log(config.Id, "can not parse udp data to frame: %s", err.Error())
+					return
+				}
+				if frame.GetFrameType() != conn.Udp_Frame {
+					util.Print_log(config.Id, "udp recv an not udp frame")
+					return
+				}
+				udp_frame := frame.(*conn.UdpFrame)
+				ul.WriteToUDP(bytes.Join([][]byte{{0, 0, 0, 1, 0, 0, 0, 0, 0, 0}, udp_frame.Data}, nil),
+					&net.UDPAddr{
+						IP:   udp_frame.Local_addr.ToHostBytes(),
+						Port: udp_frame.Local_addr.ToPortInt(),
+					})
+			}(buf[:i])
+
+		}
 	}()
 
 	for {
@@ -390,9 +443,9 @@ func handle_socks5_udp_forward_udp(ul ,remote *net.UDPConn, config *conn.ClientC
 					Data:       data,
 				}
 
-				remote.WriteToUDP(config.Udp_crypt.Encrypt(frame.ToBytes()),&net.UDPAddr{
-					IP:   config.Server_Addr.ToHostBytes(),
-					Port: config.Server_Addr.ToPortInt(),
+				remote.WriteToUDP(config.Udp_crypt.Encrypt(frame.ToBytes()), &net.UDPAddr{
+					IP:   config.Udp_Server_Addr.ToHostBytes(),
+					Port: config.Udp_Server_Addr.ToPortInt(),
 				})
 			}
 

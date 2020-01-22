@@ -8,8 +8,10 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,22 +31,31 @@ type ClientConfig struct {
 
 	Local_addr string
 	Local_port int
+	Zone_id    uint32
 
-	Front_proxy_schema string
-	Front_proxy_addr   string
+	Front_proxy struct {
+		User_front_proxy   bool
+		Front_proxy_schema string
+		Front_proxy_path   string
+		Front_proxy_addr   string
+		Auth_need          bool
+		Username           string
+		Passwd             string
+	}
 
 	Remoted_dns Addr
 
-	Server_addr string
-	Server_Addr Addr
+	Tcp_server_addr string
+	Tcp_Server_Addr Addr
+
+	Udp_server_addr string
+	Udp_Server_Addr Addr
 
 	Crypt Crypt_interface
 
 	Udp_crypt Crypt_interface
 
 	Tls_conf *tls.Config
-
-	Client_cert []tls.Certificate
 
 	ConnectionHandler *ConnectionHandler
 
@@ -56,7 +67,8 @@ type ClientConfig struct {
 }
 
 type ServConfig struct {
-	Listen_port           int
+	Tcp_listen_port       int
+	Udp_listen_port       int
 	Tls_conf              *tls.Config
 	Crypt                 Crypt_interface
 	Udp_crypt             Crypt_interface
@@ -108,7 +120,6 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 		cli_conf.Connection_max_payload = client.Connection_max_payload
 	}
 
-
 	//check mode
 	client.Mode = strings.ToLower(client.Mode)
 	if client.Mode != Http && client.Mode != Socks5 && client.Mode != Iptables {
@@ -120,7 +131,6 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 	}
 	cli_conf.Mode = client.Mode
 	if cli_conf.Mode == Iptables {
-		cli_conf.Ipv6 = false
 		cli_conf.Domain_cache_time = 0
 	} else if client.Domain_cache_time != 0 && client.Domain_cache_time < 60 {
 		cli_conf.Domain_cache_time = 60
@@ -171,7 +181,22 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 			return nil, nil, errors.New("local port illegal")
 		}
 		cli_conf.Local_port = client.Local_Port
-		info = append(info, fmt.Sprintf("%-25s : %v", "local addr ", fmt.Sprintf("127.0.0.1:%d",cli_conf.Local_port)))
+		info = append(info, fmt.Sprintf("%-25s : %v", "listen port ", cli_conf.Local_port))
+		if client.Ipv6 {
+			if client.Interface == "" {
+				cli_conf.Zone_id = 0
+				info = append(info, fmt.Sprintf("%-25s : %v", "interface", "not specific"))
+
+			} else {
+				i, err := net.InterfaceByName(client.Interface)
+				if err != nil {
+					return nil, nil, errors.New(err.Error())
+				}
+				cli_conf.Zone_id = uint32(i.Index)
+				info = append(info, fmt.Sprintf("%-25s : %v", client.Interface))
+			}
+			info = append(info, fmt.Sprintf("%-25s : %v", "zone id", cli_conf.Zone_id))
+		}
 	} else {
 		if client.Local_addr == "" {
 			return nil, nil, errors.New("local addr is nil")
@@ -185,28 +210,108 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 	}
 
 	// check front proxy
-
 	if client.Front_proxy != "" {
-		//url,err:=url.Parse(client.Front_proxy)
-		//if err!=nil{
-		//	return nil,errors.New("parse front proxy addr fail : "+err.Error())
-		//}
-		//sch:= strings.ToLower(url.Scheme)
-		//if sch!=Http && sch!=Socks5{
-		//	return nil,errors.New("front proxy proto not support")
-		//}
+
+		default_port:=map[string]int{
+			Http:80,
+			Socks5:1080,
+		}
+
+		url, err := url.Parse(client.Front_proxy)
+		if err != nil {
+			return nil, nil, errors.New("parse front proxy addr fail : " + err.Error())
+		}
+		sch := strings.ToLower(url.Scheme)
+		if sch != Http && sch != Socks5  {
+
+		}
+		port := 0
+
+		switch sch {
+		case Http,Socks5:
+			if url.Port() == "" {
+				port = default_port[sch]
+			} else {
+				p, err := strconv.ParseInt(url.Port(), 10, 0)
+				if err != nil {
+					return nil, nil, err
+				}
+				port = int(p)
+			}
+			if sch!=Socks5{
+				cli_conf.Front_proxy.Front_proxy_path=url.Path
+			}
+
+		default:
+			return nil, nil, errors.New("front proxy proto not support")
+
+		}
+
+		addr,err:=parse_local_string_addr(fmt.Sprintf("%s:%d",url.Hostname(),port), cli_conf)
+		if err!=nil{
+			return nil, nil, errors.New(fmt.Sprintf("front proxy address parse fail: %s",err.Error()))
+		}
+
+		cli_conf.Front_proxy.User_front_proxy=true
+		cli_conf.Front_proxy.Front_proxy_schema=url.Scheme
+		cli_conf.Front_proxy.Front_proxy_addr=addr.StringWithPort()
+
+		if url.User.Username()!=""{
+			cli_conf.Front_proxy.Auth_need=true
+			cli_conf.Front_proxy.Username=url.User.Username()
+			p,ok:=url.User.Password()
+			if ok{
+				cli_conf.Front_proxy.Passwd=p
+				info = append(info, fmt.Sprintf("%-25s : %v", "front proxy", fmt.Sprintf(
+					"%s://%s:%s@%s%s",
+					cli_conf.Front_proxy.Front_proxy_schema,
+					cli_conf.Front_proxy.Username,
+					cli_conf.Front_proxy.Passwd,
+					cli_conf.Front_proxy.Front_proxy_addr,
+					cli_conf.Front_proxy.Front_proxy_path,
+				)))
+			}else{
+				info = append(info, fmt.Sprintf("%-25s : %v", "front proxy", fmt.Sprintf(
+					"%s://%s@%s%s",
+					cli_conf.Front_proxy.Front_proxy_schema,
+					cli_conf.Front_proxy.Username,
+					cli_conf.Front_proxy.Front_proxy_addr,
+					cli_conf.Front_proxy.Front_proxy_path,
+				)))
+			}
+		}else{
+			info = append(info, fmt.Sprintf("%-25s : %v", "front proxy", fmt.Sprintf(
+				"%s://%s%s",
+				cli_conf.Front_proxy.Front_proxy_schema,
+				cli_conf.Front_proxy.Front_proxy_addr,
+				cli_conf.Front_proxy.Front_proxy_path,
+				)))
+		}
 
 	}
 
 	//check server
-	server_name := strings.Trim(client.Server_addr, "")
-	addr, err := parse_local_string_addr(server_name, cli_conf)
+	tcp_server_addr := strings.TrimRight(strings.TrimLeft(client.Tcp_server_addr, ""), "")
+	udp_server_addr := strings.TrimRight(strings.TrimLeft(client.Udp_server_addr, ""), "")
+
+	tcp_addr, err := parse_local_string_addr(tcp_server_addr, cli_conf)
 	if err != nil {
-		return nil, nil, errors.New("check server addr faile : " + err.Error())
+		return nil, nil, errors.New("check tcp server addr faile : " + err.Error())
 	}
-	cli_conf.Server_Addr = addr
-	cli_conf.Server_addr = addr.StringWithPort()
-	info = append(info, fmt.Sprintf("%-25s : %v", "server addr ", cli_conf.Server_addr))
+	cli_conf.Tcp_Server_Addr = tcp_addr
+	cli_conf.Tcp_server_addr = tcp_addr.StringWithPort()
+
+	info = append(info, fmt.Sprintf("%-25s : %v", "tcp server addr ", cli_conf.Tcp_server_addr))
+
+	if cli_conf.Mode != Http {
+		udp_addr, err := parse_local_string_addr(udp_server_addr, cli_conf)
+		if err != nil {
+			return nil, nil, errors.New("check udp server addr faile : " + err.Error())
+		}
+		cli_conf.Udp_Server_Addr = udp_addr
+		cli_conf.Udp_server_addr = udp_addr.StringWithPort()
+		info = append(info, fmt.Sprintf("%-25s : %v", "udp server addr ", cli_conf.Udp_server_addr))
+	}
 
 	//check remote dns addr
 	if client.Remote_dns_addr != "" {
@@ -230,7 +335,7 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 		info = append(info, fmt.Sprintf("%-25s : %v", "remote dns addr ", addr.StringWithPort()))
 	} else {
 		cli_conf.Remoted_dns = nil
-		info = append(info, fmt.Sprintf("%-25s : %v", "remote dns addr ", "use remote servrr default dns addr"))
+		info = append(info, fmt.Sprintf("%-25s : %v", "remote dns addr ", "use remote server default dns addr"))
 	}
 
 	//check crypt
@@ -251,9 +356,14 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 		}
 
 		cert_pool.AppendCertsFromPEM(root_cert)
+		cert, err := tls.LoadX509KeyPair(client.Tls.Certificate, client.Tls.Private_key)
+		if err != nil {
+			return nil, nil, errors.New("load client cert fail : " + err.Error())
+		}
 		cli_conf.Tls_conf = &tls.Config{
 			RootCAs:                cert_pool,
-			ServerName:             strings.Split(server_name, ":")[0],
+			ServerName:             strings.Split(tcp_server_addr, ":")[0],
+			Certificates:           []tls.Certificate{cert},
 			MinVersion:             tls.VersionTLS13,
 			SessionTicketsDisabled: true,
 		}
@@ -262,19 +372,6 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 		}
 		info = append(info, fmt.Sprintf("%-25s : %v", "tls server name ", cli_conf.Tls_conf.ServerName))
 
-		if len(client.Tls.Client_cert) == 0 {
-			return nil, nil, errors.New("tls check fail : client cert is nil")
-		}
-
-		client_cert := []tls.Certificate{}
-		for _, v := range client.Tls.Client_cert {
-			cert, err := tls.LoadX509KeyPair(v.Cert, v.Private_key)
-			if err != nil {
-				return nil, nil, errors.New("load client cert fail : " + err.Error())
-			}
-			client_cert = append(client_cert, cert)
-		}
-		cli_conf.Client_cert = client_cert
 		if !client.Tls.Tcp_encrypt {
 			cli_conf.Crypt = Get_none_crypt()
 		}
@@ -310,9 +407,11 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 
 func LoadServerConfig(serve *Serve, i uint16) (*ServConfig, []string, error) {
 	s := &ServConfig{}
-	s.Listen_port = serve.Listen_port
+	s.Tcp_listen_port = serve.Tcp_listen_port
+	s.Udp_listen_port = serve.Udp_listen_port
 	s.Id = i
-	info := []string{fmt.Sprintf("%-25s : %v", "listen port", s.Listen_port)}
+	info := []string{fmt.Sprintf("%-25s : %v", "tcp listen port", s.Tcp_listen_port)}
+	info = append(info, fmt.Sprintf("%-25s : %v", "udp listen port", s.Udp_listen_port))
 
 	crypt, err := Get_crypt(serve.Enc_method, serve.Password)
 	if err != nil {
@@ -322,15 +421,17 @@ func LoadServerConfig(serve *Serve, i uint16) (*ServConfig, []string, error) {
 	s.Udp_crypt = crypt
 
 	if serve.Tls.On {
-		if len(serve.Tls.Client_cert_paths) == 0 {
+		if len(serve.Tls.Client_certs) == 0 {
 			return nil, nil, errors.New("client cert is nil")
 		}
-		cert, err := tls.LoadX509KeyPair(serve.Tls.Server_cert_path, serve.Tls.Server_private_key_path)
+
+		cert, err := tls.LoadX509KeyPair(serve.Tls.Server_cert, serve.Tls.Server_private_key)
 		if err != nil {
 			return nil, nil, errors.New("load server cert and private key exception:" + err.Error())
 		}
+
 		cli_cert := x509.NewCertPool()
-		for _, v := range serve.Tls.Client_cert_paths {
+		for _, v := range serve.Tls.Client_certs {
 			b, err := ioutil.ReadFile(v)
 			if err != nil {
 				log.Fatal("load client cert fail : " + err.Error())

@@ -22,16 +22,32 @@ func StartLocalproxy(config *conn.ClientConfig, g *sync.WaitGroup) {
 
 		w := &sync.WaitGroup{}
 		if config.Ipv6 {
-			l6, err := net.ListenTCP("tcp6", &net.TCPAddr{
-
+			__l6, err := net.ListenTCP("tcp6", &net.TCPAddr{
 				IP:   net.ParseIP("::1"),
 				Port: config.Local_port,
-				Zone:"",
+				Zone:"lo",
 			})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
 				os.Exit(1)
 			}
+			fd,err:=__l6.File()
+			if err!=nil{
+				fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
+				os.Exit(1)
+			}
+			__l6.Close()
+			if err := syscall.SetsockoptInt(int(fd.Fd()), IPPROTO_IP, IP_TRANSPARENT, 1); err != nil {
+				fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
+				os.Exit(1)
+			}
+			_l6,err:=net.FileListener(fd)
+			if err!=nil{
+				fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
+				os.Exit(1)
+			}
+			l6:=_l6.(*net.TCPListener)
+
 
 			_ul6, err := net.ListenUDP("udp6", &net.UDPAddr{
 				IP:   net.ParseIP("::1"),
@@ -43,7 +59,7 @@ func StartLocalproxy(config *conn.ClientConfig, g *sync.WaitGroup) {
 				os.Exit(1)
 			}
 
-			fd, err := _ul6.File()
+			fd, err = _ul6.File()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
 				os.Exit(1)
@@ -53,7 +69,7 @@ func StartLocalproxy(config *conn.ClientConfig, g *sync.WaitGroup) {
 				fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
 				os.Exit(1)
 			}
-			if err := syscall.SetsockoptInt(int(fd.Fd()), IPPROTO_IPV6, IP_TRANSPARENT, 1); err != nil {
+			if err := syscall.SetsockoptInt(int(fd.Fd()), IPPROTO_IP, IP_TRANSPARENT, 1); err != nil {
 				fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
 				os.Exit(1)
 			}
@@ -113,7 +129,7 @@ func StartLocalproxy(config *conn.ClientConfig, g *sync.WaitGroup) {
 
 		}
 
-		l4, err := net.ListenTCP("tcp4", &net.TCPAddr{
+		__l4, err := net.ListenTCP("tcp4", &net.TCPAddr{
 			IP:   []byte{127, 0, 0, 1},
 			Port: config.Local_port,
 		})
@@ -121,6 +137,23 @@ func StartLocalproxy(config *conn.ClientConfig, g *sync.WaitGroup) {
 			fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
 			os.Exit(1)
 		}
+
+		fd,err:=__l4.File()
+		if err!=nil{
+			fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
+			os.Exit(1)
+		}
+		__l4.Close()
+		if err := syscall.SetsockoptInt(int(fd.Fd()), IPPROTO_IP, IP_TRANSPARENT, 1); err != nil {
+			fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
+			os.Exit(1)
+		}
+		_l4,err:=net.FileListener(fd)
+		if err!=nil{
+			fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
+			os.Exit(1)
+		}
+		l4:=_l4.(*net.TCPListener)
 
 		_ul4, err := net.ListenUDP("udp4", &net.UDPAddr{
 			IP:   []byte{127, 0, 0, 1},
@@ -130,7 +163,7 @@ func StartLocalproxy(config *conn.ClientConfig, g *sync.WaitGroup) {
 			fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
 			os.Exit(1)
 		}
-		fd, err := _ul4.File()
+		fd, err = _ul4.File()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, err.Error()+"\r\n")
 			os.Exit(1)
@@ -154,7 +187,7 @@ func StartLocalproxy(config *conn.ClientConfig, g *sync.WaitGroup) {
 			go handle_iptables_udp_forward_tcp(ul4.(*net.UDPConn), config,false)
 		} else {
 
-			remote_connection, err := net.ListenUDP("udp4", &net.UDPAddr{})
+			remote_connection, err := net.ListenUDP("udp", &net.UDPAddr{})
 
 			if err != nil {
 				fmt.Fprintf(os.Stderr, err.Error()+"\r\n")

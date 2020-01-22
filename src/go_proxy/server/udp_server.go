@@ -14,7 +14,7 @@ var route = &sync.Map{}
 
 func Start_udp_serv(config *conn.ServConfig, g *sync.WaitGroup) {
 	ul, err := net.ListenUDP("udp", &net.UDPAddr{
-		Port: config.Listen_port,
+		Port: config.Udp_listen_port,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, err.Error()+"\r\n")

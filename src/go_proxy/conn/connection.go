@@ -19,6 +19,7 @@ const Udp_buf_size = 65450
 
 type ServerConnection struct {
 	Id                   string
+	local_ip            string
 	payload              uint16
 	remote               net.Conn
 	id_chan              chan uint16
