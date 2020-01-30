@@ -1,0 +1,22 @@
+
+table ip go_proxy {
+        
+	include "nft_set_ipv4.save"
+
+	chain go_proxy {
+		ip protocol udp tproxy to 127.0.0.1:9999 meta mark set 0x00000001
+		ip protocol tcp tproxy to 127.0.0.1:9999 meta mark set 0x00000001
+	}
+
+	chain prerouting {
+		type filter hook prerouting priority mangle ; policy accept;
+		ip daddr @ipv4_whitelist return
+		jump go_proxy
+	}
+
+	chain output {
+		type route hook output priority 0; policy accept;
+		ip daddr @ipv4_whitelist return
+		meta mark set 0x00000001
+	}
+}

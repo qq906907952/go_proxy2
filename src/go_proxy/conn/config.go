@@ -193,7 +193,7 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 					return nil, nil, errors.New(err.Error())
 				}
 				cli_conf.Zone_id = uint32(i.Index)
-				info = append(info, fmt.Sprintf("%-25s : %v", client.Interface))
+				info = append(info, fmt.Sprintf("%-25s : %v", "interface",client.Interface))
 			}
 			info = append(info, fmt.Sprintf("%-25s : %v", "zone id", cli_conf.Zone_id))
 		}

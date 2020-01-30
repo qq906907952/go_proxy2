@@ -1,0 +1,22 @@
+
+table ip6 go_proxy_ipv6 {
+        
+	include "nft_set_ipv6.save"
+
+	chain go_proxy {
+		 udp dport 1-65535 tproxy to [::1]:9999 meta mark set 0x00000001
+		 tcp dport 1-65535 tproxy to [::1]:9999 meta mark set 0x00000001
+	}
+
+	chain prerouting {
+		type filter hook prerouting priority mangle ; policy accept;
+		ip6 daddr @ipv6_whitelist return
+		jump go_proxy
+	}
+
+	chain output {
+		type route hook output priority 0; policy accept;
+		ip6 daddr @ipv6_whitelist return
+		meta mark set 0x00000001
+	}
+}
