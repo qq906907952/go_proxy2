@@ -362,7 +362,7 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 		}
 		cli_conf.Tls_conf = &tls.Config{
 			RootCAs:                cert_pool,
-			ServerName:             strings.Split(tcp_server_addr, ":")[0],
+			ServerName:             tcp_addr.String(),
 			Certificates:           []tls.Certificate{cert},
 			MinVersion:             tls.VersionTLS13,
 			SessionTicketsDisabled: true,
