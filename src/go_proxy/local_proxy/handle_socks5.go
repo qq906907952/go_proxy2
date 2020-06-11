@@ -161,16 +161,6 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 				var remote_close = false
 				defer func() {
 					cancel2()
-					select {
-					case local.SendChan <- &conn.ControlFrame{
-						Version:      0,
-						ConnectionId: local.ConnectionId,
-						Command:      conn.Command_close_conn,
-					}:
-
-					case <-local.Remote_ctx.Done():
-					}
-
 					local.Close(remote_close)
 
 				}()
@@ -221,6 +211,8 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 					case local.SendChan <- frame:
 					case <-local.Remote_ctx.Done():
 						break loop
+					case <-ctx.Done():
+						break loop
 					}
 				case <-local.Remote_ctx.Done():
 					break loop
@@ -230,6 +222,16 @@ func handle_socks5_udp_forward_tcp(ul *net.UDPConn, config *conn.ClientConfig) {
 					break loop
 				}
 
+			}
+
+			select {
+			case local.SendChan <- &conn.ControlFrame{
+				Version:      0,
+				ConnectionId: local.ConnectionId,
+				Command:      conn.Command_close_conn,
+			}:
+
+			case <-local.Remote_ctx.Done():
 			}
 
 			cancel()

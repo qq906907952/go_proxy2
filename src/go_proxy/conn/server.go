@@ -526,20 +526,26 @@ func (this *RemoteServerConnection) handle_new_udp_connection(frame *ControlFram
 								return
 							}
 							select {
-
-							case this.recvChan <- &UdpFrame{
-								Version:      0,
-								ConnectionId: connection_id,
-								Local_addr:   frame.Local_addr,
-								Dest_addr:    dest_addr,
-								Data:         buf[:i],
-							}:
-								continue
-
 							case <-this.ctx.Done():
 								return
 							case <-ctx.Done():
 								return
+							default:
+								select {
+								case this.recvChan <- &UdpFrame{
+									Version:      0,
+									ConnectionId: connection_id,
+									Local_addr:   frame.Local_addr,
+									Dest_addr:    dest_addr,
+									Data:         buf[:i],
+								}:
+									continue
+								case <-this.ctx.Done():
+									return
+								case <-ctx.Done():
+									return
+								}
+
 
 							}
 

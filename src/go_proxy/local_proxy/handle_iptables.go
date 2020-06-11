@@ -381,20 +381,10 @@ func remote_udp_2_tcp_loop(data_chan chan *conn.UdpFrame, config *conn.ClientCon
 
 		go func() {
 			var remote_close = false
+
 			defer func() {
 				cancel2()
-				select {
-				case remote.SendChan <- &conn.ControlFrame{
-					Version:      0,
-					ConnectionId: remote.ConnectionId,
-					Command:      conn.Command_close_conn,
-				}:
-
-				case <-remote.Remote_ctx.Done():
-				}
-
 				remote.Close(remote_close)
-
 			}()
 
 			for {
@@ -450,6 +440,8 @@ func remote_udp_2_tcp_loop(data_chan chan *conn.UdpFrame, config *conn.ClientCon
 				case remote.SendChan <- frame:
 				case <-remote.Remote_ctx.Done():
 					break loop
+				case <-ctx.Done():
+					break loop
 				}
 			case <-remote.Remote_ctx.Done():
 				break loop
@@ -459,6 +451,16 @@ func remote_udp_2_tcp_loop(data_chan chan *conn.UdpFrame, config *conn.ClientCon
 				break loop
 			}
 
+		}
+
+		select {
+		case remote.SendChan <- &conn.ControlFrame{
+			Version:      0,
+			ConnectionId: remote.ConnectionId,
+			Command:      conn.Command_close_conn,
+		}:
+
+		case <-remote.Remote_ctx.Done():
 		}
 
 		cancel()
