@@ -29,9 +29,10 @@ func (this *ServerConnectionhandler) Dispatch_serv(serv_con net.Conn) {
 		connection_info:    h,
 		local_close_notify: make(chan uint16, h.Max_payload),
 		recvChan:           make(chan Frame),
-		sendChan:           &sync.Map{},
+		sendChan:           make(map[uint16]chan<- Frame),
 		ctx:                ctx,
 		lock:               &sync.RWMutex{},
+		chan_lock:          &sync.RWMutex{},
 		payload:            0,
 		handler:            this,
 	}
@@ -117,7 +118,9 @@ func (this *ServerConnectionhandler) Dispatch_serv(serv_con net.Conn) {
 				}
 
 				local_recv_chan := make(chan Frame, 500)
-				remote.sendChan.Store(frame.GetConnectionId(), local_recv_chan)
+				remote.chan_lock.Lock()
+				remote.sendChan[frame.GetConnectionId()] = local_recv_chan
+				remote.chan_lock.Unlock()
 
 				switch frame.Protocol {
 				case Proto_tcp:
@@ -155,22 +158,30 @@ func (this *ServerConnectionhandler) Dispatch_serv(serv_con net.Conn) {
 				}
 
 			default:
-				ch, ok := remote.sendChan.Load(frame.GetConnectionId())
+				remote.chan_lock.RLock()
+
+				ch, ok := remote.sendChan[frame.GetConnectionId()]
 				if !ok {
-					util.Print_log(this.config.Id, "serve: recv an unknow connection id")
+					remote.chan_lock.RUnlock()
+					util.Print_log(this.config.Id, "serve: recv frame with unknown connection id, frame: %v",frame)
 					return
 
 				} else {
-					ch.(chan Frame) <- frame
+					ch <- frame
+					remote.chan_lock.RUnlock()
 				}
 			}
 		case Data_frame, Udp_Frame:
-			ch, ok := remote.sendChan.Load(frame.GetConnectionId())
+			remote.chan_lock.RLock()
+			ch, ok := remote.sendChan[frame.GetConnectionId()]
 			if !ok {
-				util.Print_log(this.config.Id, "serve: recv an unknow connection id")
+				remote.chan_lock.RUnlock()
+				util.Print_log(this.config.Id, "serve: recv frame with unknown connection id, frame: %v",frame)
 				return
+			} else {
+				ch <- frame
+				remote.chan_lock.RUnlock()
 			}
-			ch.(chan Frame) <- frame
 
 		default:
 			util.Print_log(this.config.Id, "serve: recv an unknow frame type")

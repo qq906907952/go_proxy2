@@ -3,6 +3,7 @@ package local_proxy
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"go_proxy/conn"
 	"io"
 	"net"
@@ -53,6 +54,9 @@ func handle_http_con(con *net.TCPConn, config *conn.ClientConfig) error {
 
 	default:
 		host := req.Host
+		if host==""{
+			return errors.New("http proxy can not determine host")
+		}
 		split := ":"
 		if host[0] == '[' {
 			split = "]:"

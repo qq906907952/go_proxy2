@@ -151,7 +151,7 @@ func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.Con
 
 	var (
 		remote_close = false
-		send_close   = true
+		send_close   = false
 	)
 
 	defer func() {
@@ -182,6 +182,7 @@ func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.Con
 
 	select{
 	case local.SendChan <- first_frame:
+		send_close=true
 		break
 	case <-local.Remote_ctx.Done():
 		return nil

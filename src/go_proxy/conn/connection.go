@@ -153,17 +153,23 @@ type RemoteServerConnection struct {
 	remote             net.Conn
 	local_close_notify chan uint16
 	recvChan           chan Frame
-	sendChan           *sync.Map
+	sendChan           map[uint16]chan <- Frame
 	ctx                context.Context
 	payload            int
 	connection_info    *Handshake_info
 	lock               *sync.RWMutex
+	chan_lock          *sync.RWMutex
 	handler            *ServerConnectionhandler
 }
 
 func (this *RemoteServerConnection) close_subconnection(connection_id uint16, local_close bool, local_recv_chan chan Frame) {
 	defer func() {
-		this.sendChan.Delete(connection_id)
+		this.chan_lock.Lock()
+		ch:=this.sendChan[connection_id]
+		if ch==local_recv_chan{
+			delete(this.sendChan,connection_id)
+		}
+		this.chan_lock.Unlock()
 		close(local_recv_chan)
 	}()
 
