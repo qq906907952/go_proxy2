@@ -106,7 +106,7 @@ func convert_addr(addr conn.Addr, config *conn.ClientConfig) (conn.Addr, bool, e
 
 }
 
-func handle_cn_connection(con net.Conn, addr conn.Addr, cn_data, local_data []byte) error {
+func handle_cn_connection(config *conn.ClientConfig, con net.Conn, addr conn.Addr, cn_data, local_data []byte) error {
 
 	if util.Verbose_info{
 		util.Print_verbose("%s connection cn addr:%s",con.RemoteAddr().String(),addr.StringWithPort())
@@ -115,6 +115,15 @@ func handle_cn_connection(con net.Conn, addr conn.Addr, cn_data, local_data []by
 	cn_con, err := net.Dial("tcp", addr.StringWithPort())
 	if err != nil {
 		return err
+	}
+
+	remote_addr, err := conn.NewAddrFromString(cn_con.RemoteAddr().String(), false)
+	if err != nil {
+		return err
+	}
+
+	if (remote_addr.String() == config.Local_ip || config.Local_ip == "0.0.0.0" || config.Local_ip == "::") && remote_addr.ToPortInt() == config.Local_port {
+		return errors.New("local recursive detected, return")
 	}
 
 	defer func() {

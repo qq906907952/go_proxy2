@@ -30,6 +30,7 @@ type ClientConfig struct {
 	Local_dns_addr string
 
 	Local_addr string
+	Local_ip string
 	Local_port int
 	Zone_id    uint32
 
@@ -206,6 +207,8 @@ func LoadClientConfig(client *Client, i uint16) (*ClientConfig, []string, error)
 			return nil, nil, errors.New("check local addr fail : " + err.Error())
 		}
 		cli_conf.Local_addr = addr.StringWithPort()
+		cli_conf.Local_ip = addr.String()
+		cli_conf.Local_port=addr.ToPortInt()
 		info = append(info, fmt.Sprintf("%-25s : %v", "local addr ", cli_conf.Local_addr))
 	}
 

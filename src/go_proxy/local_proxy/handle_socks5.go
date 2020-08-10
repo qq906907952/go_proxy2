@@ -68,7 +68,7 @@ func handle_socks5_tcp(con net.Conn, config *conn.ClientConfig, atype byte) erro
 		return err
 	}
 	if is_cn {
-		return handle_cn_connection(con, addr, nil, sockks5_reply)
+		return handle_cn_connection(config,con, addr, nil, sockks5_reply)
 	} else {
 		local, err := config.ConnectionHandler.Dispatch_client(con)
 		if err != nil {

@@ -34,7 +34,7 @@ func handle_http_con(con *net.TCPConn, config *conn.ClientConfig) error {
 		}
 
 		if is_cn {
-			return handle_cn_connection(con, addr, nil, []byte(https_establish_reply))
+			return handle_cn_connection(config,con, addr, nil, []byte(https_establish_reply))
 		} else {
 			local, err := config.ConnectionHandler.Dispatch_client(con)
 			if err != nil {
@@ -78,7 +78,7 @@ func handle_http_con(con *net.TCPConn, config *conn.ClientConfig) error {
 		}
 
 		if is_cn {
-			return handle_cn_connection(con, addr, data, nil)
+			return handle_cn_connection(config,con, addr, data, nil)
 
 		} else {
 			local, err := config.ConnectionHandler.Dispatch_client(con)
