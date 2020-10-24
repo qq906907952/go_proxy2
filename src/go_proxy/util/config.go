@@ -190,7 +190,7 @@ func init() {
 		}
 
 		ctx, cancel := context.WithCancel(context.TODO())
-		timeout_ctx, _ := context.WithTimeout(context.TODO(), 10*time.Second)
+		timeout_ctx, _ := context.WithTimeout(context.TODO(), 60*time.Second)
 
 		go func() {
 			defer cancel()
@@ -223,7 +223,7 @@ func init() {
 				if os.IsNotExist(err1) || os.IsNotExist(err2) {
 					continue
 				} else {
-					time.Sleep(1 * time.Second)
+					time.Sleep(2 * time.Second)
 					buf := make([]byte, 10240)
 					i, err := stdout.Read(buf)
 					if i > 0 {
