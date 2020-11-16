@@ -24,6 +24,10 @@ func Parse_local_domain(domain string, ipv6 bool,dns_addr string) ([]byte, int, 
 			return net.Dial("udp", dns_addr)
 		}
 	}
+
+	need_tcp_try_again:=dial!=nil
+use_tcp_try_again:
+
 	ctx, _ := context.WithTimeout(context.TODO(), time.Duration(util.Config.Udp_timeout)*time.Second)
 	ip, err := (&net.Resolver{
 		Dial: dial,
@@ -49,6 +53,13 @@ func Parse_local_domain(domain string, ipv6 bool,dns_addr string) ([]byte, int, 
 	}
 	if ip4 != nil {
 		return ip4, Addr_type_ipv4, nil
+	}
+	if need_tcp_try_again{
+		need_tcp_try_again=false
+		dial=func(_ context.Context, _, _ string) (conn net.Conn, e error) {
+			return net.Dial("tcp", dns_addr)
+		}
+		goto use_tcp_try_again
 	}
 	return nil, 0, exception.DnsError{}.New("local domain "+ domain + " can not found A record")
 
