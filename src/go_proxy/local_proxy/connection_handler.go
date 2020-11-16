@@ -12,10 +12,15 @@ import (
 
 func convert_addr(addr conn.Addr, config *conn.ClientConfig) (conn.Addr, bool, error) {
 	if addr.IsDomain() {
+		var(
+			_ip interface{}
+			ok bool = false
+		)
 		if addr.IsChinaAddr() {
 			is_cn := true
-			_ip, ok := config.Cn_domain_ip_map.Load(addr.String())
-
+			if config.Domain_cache_time!=0{
+				_ip, ok = config.Cn_domain_ip_map.Load(addr.String())
+			}
 			if ok {
 				var (
 					new_addr conn.Addr
@@ -68,7 +73,9 @@ func convert_addr(addr conn.Addr, config *conn.ClientConfig) (conn.Addr, bool, e
 
 		} else {
 			is_cn := false
-			_ip, ok := config.Not_cn_domain_ip_map.Load(addr.String())
+			if config.Domain_cache_time!=0{
+				_ip, ok = config.Not_cn_domain_ip_map.Load(addr.String())
+			}
 
 			if ok {
 				if  time.Now().Unix()-_ip.(*conn.Domain_record).Time>config.Domain_cache_time{
