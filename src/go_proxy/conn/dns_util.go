@@ -24,12 +24,22 @@ func Parse_local_domain(domain string, ipv6 bool,dns_addr string) ([]byte, int, 
 			return net.Dial("udp", dns_addr)
 		}
 	}
+	need_tcp_try_again:=dial!=nil
+tcp_try_again:
+
 	ctx, _ := context.WithTimeout(context.TODO(), time.Duration(util.Config.Udp_timeout)*time.Second)
 	ip, err := (&net.Resolver{
 		Dial: dial,
 		PreferGo:true,
 	}).LookupIPAddr(ctx, domain)
 	if err != nil {
+		if need_tcp_try_again{
+			need_tcp_try_again=false
+			dial=func(_ context.Context, _, _ string) (conn net.Conn, e error) {
+				return net.Dial("tcp", dns_addr)
+			}
+			goto tcp_try_again
+		}
 		return nil, 0, err
 	}
 	var ip4 net.IP = nil
