@@ -113,6 +113,21 @@ func convert_addr(addr conn.Addr, config *conn.ClientConfig) (conn.Addr, bool, e
 
 }
 
+func split_bytes(b []byte,size int)[][]byte{
+	if size<1 || size>=len(b){
+		return [][]byte{b}
+	}
+	r:=make([][]byte,0)
+	i:=0
+	for ;i<=len(b)-size;i+=size{
+		r=append(r,b[i:i+size])
+	}
+	if i<len(b){
+		r=append(r,b[i:])
+	}
+	return r
+}
+
 func handle_cn_connection(config *conn.ClientConfig, con net.Conn, addr conn.Addr, cn_data, local_data []byte) error {
 
 	if util.Verbose_info{
@@ -195,13 +210,30 @@ func handle_not_cn_connection(local *conn.LocalConnection, first_frame *conn.Con
 			return err
 		}
 	}
-
-	select{
-	case local.SendChan <- first_frame:
-		send_close=true
-		break
-	case <-local.Remote_ctx.Done():
-		return nil
+	bs:=split_bytes(first_frame.Data,conn.Tcp_buf_size)
+	first_frame.Data=bs[0]
+	for i,v:=range bs{
+		if i==0{
+			first_frame.Data=v
+			select{
+			case local.SendChan <- first_frame:
+				send_close=true
+				break
+			case <-local.Remote_ctx.Done():
+				return nil
+			}
+		}else{
+			select{
+			case local.SendChan <- &conn.DataFrame{
+				Version:      0,
+				ConnectionId: first_frame.ConnectionId,
+				Data:         v,
+			}:
+				break
+			case <-local.Remote_ctx.Done():
+				return nil
+			}
+		}
 	}
 
 	if first_frame.Addr.IsDomain() {
